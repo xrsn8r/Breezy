@@ -9,8 +9,11 @@ object NativeShield {
         System.loadLibrary("breezy_core")
     }
 
-    /** Compile ABP/uBO filter lists (UTF-8) into a new engine and make it current. */
-    @JvmStatic external fun compileLists(lists: Array<ByteArray>): Boolean
+    /**
+     * Compile ABP/uBO filter lists (UTF-8) into a new engine and make it current. `trusted[i]`
+     * lets list i use `requiresTrust` scriptlets (only for uBlock Origin's and Brave's own lists).
+     */
+    @JvmStatic external fun compileLists(lists: Array<ByteArray>, trusted: BooleanArray): Boolean
 
     /** Load an engine produced by [serialize] / the build-time compiler. */
     @JvmStatic external fun loadSerialized(bytes: ByteArray): Boolean

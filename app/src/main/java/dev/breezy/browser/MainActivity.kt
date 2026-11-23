@@ -1,6 +1,7 @@
 package dev.breezy.browser
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
@@ -45,7 +46,8 @@ class MainActivity : ComponentActivity(), TabHost {
 
         tabs = TabManager(this, this)
         val incoming = intentUrl(intent)
-        if (!tabs.restore() || incoming != null) tabs.newTab(incoming)
+        tabs.restore()
+        if (incoming != null) tabs.newTab(incoming)
 
         setContent {
             BreezyTheme {
@@ -104,8 +106,8 @@ class MainActivity : ComponentActivity(), TabHost {
     override fun openInNewTab(tab: BrowserTab) = tabs.add(tab)
 
     override fun closeTab(tab: BrowserTab) {
+        // Closing the last tab returns to the home page rather than leaving the app.
         tabs.close(tab)
-        if (tabs.tabs.isEmpty()) tabs.newTab()
     }
 
     override fun showFileChooser(
@@ -127,6 +129,8 @@ class MainActivity : ComponentActivity(), TabHost {
         (window.decorView as ViewGroup).addView(
             view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+        // Videos are almost always landscape: rotate like Chrome does for fullscreen video.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         // Re-add so it sits on top of Compose's back handlers.
         fullscreenBack.remove()
         onBackPressedDispatcher.addCallback(this, fullscreenBack)
@@ -142,6 +146,7 @@ class MainActivity : ComponentActivity(), TabHost {
         (window.decorView as ViewGroup).removeView(view)
         fullscreenView = null
         fullscreenBack.isEnabled = false
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
         onFullscreenExit?.invoke()
         onFullscreenExit = null

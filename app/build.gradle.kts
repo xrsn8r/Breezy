@@ -36,7 +36,10 @@ val filterLists = mapOf(
     "ublock-filters.txt" to "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
     "ublock-privacy.txt" to "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
     "brave-unbreak.txt" to "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-unbreak.txt",
+    "hide-yt-shorts.txt" to "https://raw.githubusercontent.com/gijsdev/ublock-hide-yt-shorts/master/list.txt",
 )
+// uBlock Origin's and Brave's own lists may use "trusted" scriptlets (e.g. YouTube ad removal).
+fun isTrustedList(name: String) = name.startsWith("ublock-") || name.startsWith("brave-")
 val resourcesUrl = "https://raw.githubusercontent.com/brave/adblock-resources/master/dist/resources.json"
 
 abstract class CargoNdkTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
@@ -90,26 +93,87 @@ abstract class FetchFilterListsTask : DefaultTask() {
     }
 }
 
+/**
+ * Fetches uBlock Origin's scriptlet modules and redirect resources (plain files over HTTPS) so
+ * `breezy-resources` can extract them. Brave's resources.json alone lacks uBO's core scriptlets
+ * (json-prune, set-constant, trusted-replace-*), which the uBO lists, including YouTube's ad rules,
+ * depend on. Nothing downloaded here is executed; it is parsed as text.
+ */
+abstract class FetchUboResourcesTask : DefaultTask() {
+    @get:Input abstract val ref: Property<String>
+    @get:Input abstract val refresh: Property<Boolean>
+    @get:OutputDirectory abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun fetch() {
+        val root = outDir.get().asFile
+        val marker = File(root, ".complete-${ref.get()}")
+        if (marker.exists() && !refresh.get()) return
+        root.deleteRecursively()
+        val base = "https://raw.githubusercontent.com/gorhill/uBlock/${ref.get()}/"
+        fun get(path: String): ByteArray {
+            val conn = URI(base + path).toURL().openConnection().apply {
+                connectTimeout = 30_000; readTimeout = 60_000
+                setRequestProperty("User-Agent", "Breezy-Build")
+            }
+            return conn.getInputStream().use { it.readBytes() }
+        }
+        fun save(path: String, data: ByteArray) = File(root, path).apply { parentFile.mkdirs() }.writeBytes(data)
+
+        val importRe = Regex("""(?:from\s+|import\s+)'(\.\.?/[\w./-]+\.js)'""")
+        val queue = ArrayDeque(listOf("src/js/resources/scriptlets.js"))
+        val seen = HashSet<String>()
+        while (queue.isNotEmpty()) {
+            val path = queue.removeFirst()
+            if (!seen.add(path)) continue
+            val data = get(path)
+            save(path, data)
+            val dir = path.substringBeforeLast('/')
+            importRe.findAll(String(data)).forEach { m ->
+                val target = File("/$dir/${m.groupValues[1]}").normalize().path.removePrefix("/")
+                // Only modules inside src/js (the resources dir and its direct parent helpers).
+                if (target.startsWith("src/js/")) queue.add(target)
+            }
+        }
+        val redirects = get("src/js/redirect-resources.js")
+        save("src/js/redirect-resources.js", redirects)
+        Regex("""\[\s*'([\w.-]+)'\s*,\s*\{""").findAll(String(redirects)).forEach { m ->
+            val name = m.groupValues[1]
+            runCatching { save("src/web_accessible_resources/$name", get("src/web_accessible_resources/$name")) }
+        }
+        logger.lifecycle("Fetched ${seen.size} uBO scriptlet modules")
+        marker.writeText("ok")
+    }
+}
+
 abstract class CompileEngineTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val rustSources: ConfigurableFileCollection
     @get:InputDirectory abstract val listsDir: DirectoryProperty
+    @get:InputDirectory abstract val uboDir: DirectoryProperty
     @get:Input abstract val listNames: ListProperty<String>
+    @get:Input abstract val trustedNames: ListProperty<String>
     @get:Internal abstract val workingDir: DirectoryProperty
     @get:OutputDirectory abstract val outDir: DirectoryProperty
 
     @TaskAction
     fun compile() {
         val adblockDir = File(outDir.get().asFile, "adblock").apply { mkdirs() }
-        val lists = listNames.get().map { File(listsDir.get().asFile, it).absolutePath }
-        exec.exec {
-            workingDir(this@CompileEngineTask.workingDir)
-            commandLine(
-                listOf("cargo", "run", "--release", "-q", "-p", "breezy-core", "--bin", "breezy-compile", "--",
-                    File(adblockDir, "engine.dat").absolutePath) + lists
-            )
+        val trusted = trustedNames.get().toSet()
+        val lists = listNames.get().map { name ->
+            (if (name in trusted) "+" else "") + File(listsDir.get().asFile, name).absolutePath
         }
-        File(listsDir.get().asFile, "resources.json").copyTo(File(adblockDir, "resources.json"), overwrite = true)
+        fun cargo(bin: String, args: List<String>) = exec.exec {
+            workingDir(this@CompileEngineTask.workingDir)
+            commandLine(listOf("cargo", "run", "--release", "-q", "-p", "breezy-core", "--bin", bin, "--") + args)
+        }
+        cargo("breezy-compile", listOf(File(adblockDir, "engine.dat").absolutePath) + lists)
+        // Brave's resources + uBO scriptlets/redirects, extracted statically.
+        cargo("breezy-resources", listOf(
+            uboDir.get().asFile.absolutePath,
+            File(listsDir.get().asFile, "resources.json").absolutePath,
+            File(adblockDir, "resources.json").absolutePath,
+        ))
     }
 }
 
@@ -123,10 +187,18 @@ val fetchFilterLists = tasks.register<FetchFilterListsTask>("fetchFilterLists") 
     outDir.set(layout.buildDirectory.dir("filterlists"))
 }
 
+val fetchUboResources = tasks.register<FetchUboResourcesTask>("fetchUboResources") {
+    ref.set(providers.gradleProperty("uboRef").orElse("master"))
+    refresh.set(providers.gradleProperty("refreshFilterLists").map { it.toBoolean() }.orElse(false))
+    outDir.set(layout.buildDirectory.dir("ubo"))
+}
+
 val compileFilterEngine = tasks.register<CompileEngineTask>("compileFilterEngine") {
     rustSources.from(rustSourceFiles)
     listsDir.set(fetchFilterLists.flatMap { it.outDir })
+    uboDir.set(fetchUboResources.flatMap { it.outDir })
     listNames.set(filterLists.keys.toList())
+    trustedNames.set(filterLists.keys.filter(::isTrustedList))
     workingDir.set(rustDir)
     outDir.set(layout.buildDirectory.dir("generated/breezyAssets"))
 }
@@ -142,8 +214,8 @@ android {
         applicationId = "dev.breezy.browser"
         minSdk = minSdkVersion
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.3.0"
     }
 
     // Optional release signing from the environment (CI secrets); falls back to the debug key.

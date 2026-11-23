@@ -4,9 +4,12 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
+import org.json.JSONArray
+import org.json.JSONObject
 
 enum class SearchEngine(val label: String, val queryUrl: String, val queryParam: String) {
     Startpage("Startpage", "https://www.startpage.com/sp/search?query=", "query"),
@@ -18,9 +21,21 @@ enum class SearchEngine(val label: String, val queryUrl: String, val queryParam:
     val resultPrefix: String get() = queryUrl.substringAfter("://").substringBefore('?')
 }
 
+data class Shortcut(val name: String, val url: String)
+
 /** App-wide user preferences, observable from Compose. */
 object AppSettings {
     private lateinit var prefs: SharedPreferences
+
+    private val defaultShortcuts = listOf(
+        Shortcut("Wikipedia", "https://wikipedia.org"),
+        Shortcut("GitHub", "https://github.com"),
+        Shortcut("YouTube", "https://m.youtube.com"),
+        Shortcut("Hacker News", "https://news.ycombinator.com"),
+    )
+
+    /** Home page shortcuts, in display order. */
+    val shortcuts = mutableStateListOf<Shortcut>()
 
     /** Render websites dark (prefers-color-scheme + algorithmic darkening). */
     var darkWebPages by mutableStateOf(true)
@@ -43,6 +58,38 @@ object AppSettings {
             .getOrDefault(SearchEngine.Startpage)
         toolbarPosition = prefs.getFloat("toolbar_position", 0f)
         autoUpdateLists = prefs.getBoolean("auto_update_lists", true)
+        shortcuts.clear()
+        val saved = prefs.getString("shortcuts", null)
+        shortcuts.addAll(
+            if (saved == null) defaultShortcuts
+            else runCatching {
+                val arr = JSONArray(saved)
+                List(arr.length()) { arr.getJSONObject(it).let { o -> Shortcut(o.getString("name"), o.getString("url")) } }
+            }.getOrDefault(defaultShortcuts),
+        )
+    }
+
+    fun addShortcut(shortcut: Shortcut) {
+        shortcuts.removeAll { it.url == shortcut.url }
+        shortcuts.add(shortcut)
+        saveShortcuts()
+    }
+
+    fun updateShortcut(old: Shortcut, new: Shortcut) {
+        val i = shortcuts.indexOf(old)
+        if (i >= 0) shortcuts[i] = new else shortcuts.add(new)
+        saveShortcuts()
+    }
+
+    fun removeShortcut(shortcut: Shortcut) {
+        shortcuts.remove(shortcut)
+        saveShortcuts()
+    }
+
+    private fun saveShortcuts() {
+        val arr = JSONArray()
+        shortcuts.forEach { arr.put(JSONObject().put("name", it.name).put("url", it.url)) }
+        prefs.edit { putString("shortcuts", arr.toString()) }
     }
 
     fun updateDarkWebPages(value: Boolean) {

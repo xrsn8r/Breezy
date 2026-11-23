@@ -19,7 +19,7 @@ use std::sync::{Arc, RwLock};
 
 use adblock::lists::{FilterSet, ParseOptions};
 use adblock::request::Request;
-use adblock::resources::Resource;
+use adblock::resources::{PermissionMask, Resource};
 use adblock::Engine;
 
 /// What the browser should do with a network request.
@@ -49,9 +49,23 @@ fn install(engine: Engine) {
 /// phone for EasyList + EasyPrivacy), so callers should do it off the main thread and cache the
 /// [`serialize_current`] output.
 pub fn compile_lists<'a>(lists: impl IntoIterator<Item = &'a str>) -> Engine {
+    compile_lists_trusted(lists.into_iter().map(|l| (l, false)))
+}
+
+/// Permission granted to trusted lists (uBlock Origin's and Brave's own), allowing them to use
+/// `requiresTrust` scriptlets such as `trusted-replace-xhr-response`. Matches the bit the
+/// resource builder (`breezy-resources`) assigns to those scriptlets.
+pub const TRUSTED_PERMISSION: u8 = 1;
+
+/// Like [`compile_lists`], with a per-list trusted flag.
+pub fn compile_lists_trusted<'a>(lists: impl IntoIterator<Item = (&'a str, bool)>) -> Engine {
     let mut set = FilterSet::new(false);
-    for list in lists {
-        set.add_filter_list(list.to_owned(), ParseOptions::default());
+    for (list, trusted) in lists {
+        let opts = ParseOptions {
+            permissions: PermissionMask::from_bits(if trusted { TRUSTED_PERMISSION } else { 0 }),
+            ..ParseOptions::default()
+        };
+        set.add_filter_list(list.to_owned(), opts);
     }
     Engine::new_with_filter_set(set)
 }
@@ -59,6 +73,11 @@ pub fn compile_lists<'a>(lists: impl IntoIterator<Item = &'a str>) -> Engine {
 /// Compile and install an engine built from raw filter lists.
 pub fn load_lists<'a>(lists: impl IntoIterator<Item = &'a str>) {
     install(compile_lists(lists));
+}
+
+/// Compile and install an engine, with per-list trusted flags.
+pub fn load_lists_trusted<'a>(lists: impl IntoIterator<Item = (&'a str, bool)>) {
+    install(compile_lists_trusted(lists));
 }
 
 /// Install an engine from bytes produced by [`Engine::serialize`]. Returns false if the data is
@@ -226,6 +245,19 @@ example.org##.ad-banner
         assert!(hides.contains(&".ad-banner"));
         let generic = hidden_class_id_selectors_json(r#"["sponsored","foo"]"#, "[]", "[]");
         assert_eq!(generic, r#"[".sponsored"]"#);
+    }
+
+    #[test]
+    fn trusted_scriptlets_need_trusted_lists() {
+        let _g = LOCK.lock().unwrap();
+        let rule = "site.test##+js(trusted-thing)";
+        let res = r#"[{"name":"trusted-thing.js","aliases":[],"kind":{"mime":"application/javascript"},"content":"ZnVuY3Rpb24gdHJ1c3RlZFRoaW5nKCkge30=","permission":1}]"#;
+        load_lists_trusted([(rule, false)]);
+        load_resources(res).unwrap();
+        assert!(!cosmetic_resources_json("https://site.test/").contains("trustedThing"));
+        load_lists_trusted([(rule, true)]);
+        load_resources(res).unwrap();
+        assert!(cosmetic_resources_json("https://site.test/").contains("trustedThing"));
     }
 
     #[test]

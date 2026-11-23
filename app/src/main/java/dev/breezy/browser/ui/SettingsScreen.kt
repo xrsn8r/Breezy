@@ -67,6 +67,8 @@ import dev.breezy.browser.AppSettings
 import dev.breezy.browser.SearchEngine
 import dev.breezy.browser.adblock.FilterList
 import dev.breezy.browser.adblock.Shield
+import dev.breezy.browser.adblock.UserFilters
+import androidx.compose.ui.text.font.FontFamily
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
@@ -83,6 +85,7 @@ fun SettingsScreen(
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var addDialog by remember { mutableStateOf(false) }
     val numbers = remember { NumberFormat.getIntegerInstance() }
+    val myRules by UserFilters.rules.collectAsState()
 
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scroll.nestedScrollConnection),
@@ -197,6 +200,37 @@ fun SettingsScreen(
                                 trailingContent = {
                                     IconButton(onClick = { Shield.setSiteAllowed(host, false) }) {
                                         Icon(Icons.Rounded.Delete, "Turn shields back on for $host")
+                                    }
+                                },
+                                colors = cardItemColors(),
+                            )
+                        }
+                    }
+                }
+            }
+
+            // --- My filters (element picker rules) -------------------------------------------------
+            item { SectionHeader("My filters") }
+            item {
+                SettingsCard {
+                    if (myRules.isEmpty()) {
+                        ListItem(
+                            headlineContent = { Text("No custom rules yet") },
+                            supportingContent = { Text("Use Menu → Block element on any page to hide things you don't want to see") },
+                            colors = cardItemColors(),
+                        )
+                    }
+                    myRules.groupBy { it.host }.toSortedMap().forEach { (host, rules) ->
+                        rules.forEach { rule ->
+                            ListItem(
+                                headlineContent = { Text(host) },
+                                supportingContent = {
+                                    Text(rule.selector, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = { UserFilters.remove(rule) }) {
+                                        Icon(Icons.Rounded.Delete, "Delete rule for $host")
                                     }
                                 },
                                 colors = cardItemColors(),

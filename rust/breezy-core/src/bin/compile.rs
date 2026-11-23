@@ -1,6 +1,6 @@
 //! Host-side filter list compiler used by the Gradle build.
 //!
-//! `breezy-compile <out.dat> <list.txt>...`
+//! `breezy-compile <out.dat> [+]<list.txt>...`  (a `+` prefix marks a trusted list)
 //!
 //! Compiles the given ABP/uBO filter lists into adblock-rust's serialized engine format so the
 //! app can load a ready-made engine from its assets in milliseconds on first launch instead of
@@ -15,9 +15,10 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     let mut texts = Vec::new();
-    for path in lists {
+    for arg in lists {
+        let (path, trusted) = match arg.strip_prefix('+') { Some(p) => (p, true), None => (arg.as_str(), false) };
         match fs::read_to_string(path) {
-            Ok(t) => texts.push(t),
+            Ok(t) => texts.push((t, trusted)),
             Err(e) => {
                 eprintln!("breezy-compile: cannot read {path}: {e}");
                 return ExitCode::FAILURE;
@@ -25,7 +26,7 @@ fn main() -> ExitCode {
         }
     }
     let start = Instant::now();
-    breezy_core::load_lists(texts.iter().map(String::as_str));
+    breezy_core::load_lists_trusted(texts.iter().map(|(t, trusted)| (t.as_str(), *trusted)));
     let data = breezy_core::serialize_current();
     if let Err(e) = fs::write(out, &data) {
         eprintln!("breezy-compile: cannot write {out}: {e}");

@@ -97,6 +97,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.rounded.AddHome
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwipeVertical
@@ -113,84 +116,6 @@ import dev.breezy.browser.browser.UrlInput
 import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
-
-// --- Home page -------------------------------------------------------------------------------
-
-private val shortcuts = listOf(
-    "Wikipedia" to "https://wikipedia.org",
-    "GitHub" to "https://github.com",
-    "Hacker News" to "https://news.ycombinator.com",
-    "YouTube" to "https://youtube.com",
-)
-
-@Composable
-fun HomePage(totalBlocked: Long, onSearch: () -> Unit, onOpen: (String) -> Unit) {
-    val spin = rememberInfiniteTransition(label = "logo")
-    val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(24_000), RepeatMode.Restart), label = "angle")
-
-    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
-        Column(
-            Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier
-                        .size(120.dp)
-                        .rotate(angle)
-                        .clip(MaterialShapes.Cookie9Sided.toShape())
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                )
-                Icon(
-                    Icons.Rounded.Shield,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(48.dp),
-                )
-            }
-            Spacer(Modifier.height(20.dp))
-            Text("Breezy", style = MaterialTheme.typography.displayMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "${NumberFormat.getIntegerInstance().format(totalBlocked)} ads & trackers blocked",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(28.dp))
-            Surface(
-                onClick = onSearch,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
-                Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Search, contentDescription = null)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Search or type URL", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
-                shortcuts.forEachIndexed { i, (name, url) ->
-                    val shapes = when (i) {
-                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                        shortcuts.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                    }
-                    ToggleButton(
-                        checked = false,
-                        onCheckedChange = { onOpen(url) },
-                        shapes = shapes,
-                        colors = FilledTonalToggleButtonDefaults.colors(),
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                    ) { Text(name, maxLines = 1, style = MaterialTheme.typography.labelMedium) }
-                }
-            }
-            Spacer(Modifier.height(96.dp))
-        }
-    }
-}
 
 // --- Omnibox ---------------------------------------------------------------------------------
 
@@ -296,7 +221,7 @@ private fun Favicon(tab: BrowserTab, size: Int = 24) {
 @Composable
 fun TabsSheet(
     tabs: List<BrowserTab>,
-    current: BrowserTab,
+    current: BrowserTab?,
     onSelect: (BrowserTab) -> Unit,
     onClose: (BrowserTab) -> Unit,
     onNewTab: () -> Unit,
@@ -362,7 +287,7 @@ fun TabsSheet(
 
 @Composable
 fun ShieldSheet(
-    tab: BrowserTab,
+    tab: BrowserTab?,
     state: Shield.State,
     onSiteToggle: (host: String, on: Boolean) -> Unit,
     onGlobalToggle: (Boolean) -> Unit,
@@ -370,7 +295,8 @@ fun ShieldSheet(
     onManageLists: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val host = remember(tab.url) { tab.url.toUri().host }
+    val url = tab?.url.orEmpty()
+    val host = remember(url) { url.toUri().host }
     val siteOn = host != null && host !in state.allowlist
     val active = state.enabled && siteOn && state.ready
 
@@ -392,7 +318,7 @@ fun ShieldSheet(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        tab.blockedCount.toString(),
+                        (tab?.blockedCount ?: 0).toString(),
                         style = MaterialTheme.typography.displayMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
@@ -479,74 +405,112 @@ fun ShieldSheet(
 
 @Composable
 fun MenuSheet(
-    tab: BrowserTab,
+    tab: BrowserTab?,
     onNewTab: () -> Unit,
     onShare: () -> Unit,
     onSettings: () -> Unit,
+    onBlockElement: () -> Unit,
     onUnlockScrolling: () -> Unit,
     onDiagnostics: () -> Unit,
+    onAddToHome: () -> Unit,
+    onAddAsFilterList: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val onPage = tab != null && tab.url.startsWith("http")
+    val itemModifier = Modifier.clip(RoundedCornerShape(16.dp))
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-            // Connected nav buttons: back · forward · reload · share
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-            ) {
-                val items = listOf(
-                    Triple(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tab.canGoBack) to { tab.goBack() },
-                    Triple(Icons.AutoMirrored.Rounded.ArrowForward, "Forward", tab.canGoForward) to { tab.goForward() },
-                    Triple(if (tab.loading) Icons.Rounded.Close else Icons.Rounded.Refresh, if (tab.loading) "Stop" else "Reload", true) to
-                        { if (tab.loading) tab.stop() else tab.reload() },
-                    Triple(Icons.Rounded.Share, "Share", tab.url.isNotEmpty()) to onShare,
-                )
-                items.forEachIndexed { i, (meta, action) ->
-                    val (icon, label, enabled) = meta
-                    ToggleButton(
-                        checked = false,
-                        onCheckedChange = { action(); if (i < 3) onDismiss() },
-                        enabled = enabled,
-                        shapes = when (i) {
-                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                            items.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                        },
-                        colors = FilledTonalToggleButtonDefaults.colors(),
-                        modifier = Modifier.weight(1f).height(56.dp),
-                    ) { Icon(icon, contentDescription = label) }
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp).padding(bottom = 24.dp),
+        ) {
+            if (tab != null) {
+                // Connected nav buttons: back · forward · reload · share
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                ) {
+                    val items = listOf(
+                        Triple(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tab.canGoBack) to { tab.goBack() },
+                        Triple(Icons.AutoMirrored.Rounded.ArrowForward, "Forward", tab.canGoForward) to { tab.goForward() },
+                        Triple(if (tab.loading) Icons.Rounded.Close else Icons.Rounded.Refresh, if (tab.loading) "Stop" else "Reload", onPage) to
+                            { if (tab.loading) tab.stop() else tab.reload() },
+                        Triple(Icons.Rounded.Share, "Share", onPage) to onShare,
+                    )
+                    items.forEachIndexed { i, (meta, action) ->
+                        val (icon, label, enabled) = meta
+                        ToggleButton(
+                            checked = false,
+                            onCheckedChange = { action(); if (i < 3) onDismiss() },
+                            enabled = enabled,
+                            shapes = when (i) {
+                                0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                items.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                            },
+                            colors = FilledTonalToggleButtonDefaults.colors(),
+                            modifier = Modifier.weight(1f).height(56.dp),
+                        ) { Icon(icon, contentDescription = label) }
+                    }
                 }
+                Spacer(Modifier.height(12.dp))
             }
-            Spacer(Modifier.height(12.dp))
             ListItem(
                 headlineContent = { Text("New tab") },
                 leadingContent = { Icon(Icons.Rounded.Add, null) },
-                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onNewTab),
+                modifier = itemModifier.clickable(onClick = onNewTab),
             )
-            ListItem(
-                headlineContent = { Text("Desktop site") },
-                leadingContent = { Icon(Icons.Rounded.DesktopWindows, null) },
-                trailingContent = { Switch(checked = tab.desktopMode, onCheckedChange = { tab.toggleDesktopMode() }) },
-            )
-            ListItem(
-                headlineContent = { Text("Unlock scrolling") },
-                supportingContent = { Text("For pages stuck behind a hidden pop-up") },
-                leadingContent = { Icon(Icons.Rounded.SwipeVertical, null) },
-                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onUnlockScrolling),
-            )
-            ListItem(
-                headlineContent = { Text("Page diagnostics") },
-                leadingContent = { Icon(Icons.Rounded.BugReport, null) },
-                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onDiagnostics),
-            )
+            if (onPage) {
+                ListItem(
+                    headlineContent = { Text("Add to home") },
+                    supportingContent = { Text("Pin this page as a home page shortcut") },
+                    leadingContent = { Icon(Icons.Rounded.AddHome, null) },
+                    modifier = itemModifier.clickable(onClick = onAddToHome),
+                )
+                ListItem(
+                    headlineContent = { Text("Block element") },
+                    supportingContent = { Text("Tap anything on the page to hide it") },
+                    leadingContent = { Icon(Icons.Rounded.Block, null) },
+                    modifier = itemModifier.clickable(onClick = onBlockElement),
+                )
+                ListItem(
+                    headlineContent = { Text("Desktop site") },
+                    leadingContent = { Icon(Icons.Rounded.DesktopWindows, null) },
+                    trailingContent = { Switch(checked = tab!!.desktopMode, onCheckedChange = { tab.toggleDesktopMode() }) },
+                )
+                ListItem(
+                    headlineContent = { Text("Unlock scrolling") },
+                    supportingContent = { Text("For pages stuck behind a hidden pop-up") },
+                    leadingContent = { Icon(Icons.Rounded.SwipeVertical, null) },
+                    modifier = itemModifier.clickable(onClick = onUnlockScrolling),
+                )
+                if (looksLikeFilterList(tab!!.url)) {
+                    ListItem(
+                        headlineContent = { Text("Add page as filter list") },
+                        supportingContent = { Text("Use this page's rules in the ad blocker") },
+                        leadingContent = { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null) },
+                        modifier = itemModifier.clickable(onClick = onAddAsFilterList),
+                    )
+                }
+                ListItem(
+                    headlineContent = { Text("Page diagnostics") },
+                    leadingContent = { Icon(Icons.Rounded.BugReport, null) },
+                    modifier = itemModifier.clickable(onClick = onDiagnostics),
+                )
+            }
             ListItem(
                 headlineContent = { Text("Settings") },
-                supportingContent = { Text("Filter lists, search engine, dark mode") },
+                supportingContent = { Text("Filter lists, my filters, search engine, dark mode") },
                 leadingContent = { Icon(Icons.Rounded.Settings, null) },
-                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onSettings),
+                modifier = itemModifier.clickable(onClick = onSettings),
             )
         }
     }
+}
+
+/** Plain-text list URLs (…/list.txt, raw?file=…txt) get "Add page as filter list". */
+fun looksLikeFilterList(url: String): Boolean {
+    val u = url.substringBefore('#').lowercase()
+    return u.substringBefore('?').endsWith(".txt") || Regex("[?&]file=[^&]*\\.txt").containsMatchIn(u)
 }
 
 @Composable

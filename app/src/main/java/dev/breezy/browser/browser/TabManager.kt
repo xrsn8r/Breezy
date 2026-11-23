@@ -80,15 +80,19 @@ class TabManager(private val context: Context, private val host: TabHost) {
     fun restore(): Boolean {
         val json = prefs.getString("urls", null) ?: return false
         val urls = runCatching { JSONArray(json) }.getOrNull() ?: return false
-        if (urls.length() == 0) return false
         val selected = prefs.getInt("current", 0)
+        var selectTab: BrowserTab? = null
         for (i in 0 until urls.length()) {
+            val url = urls.optString(i)
+            if (url.isEmpty()) continue // blank tabs aren't kept: the home page isn't a tab
             val tab = BrowserTab(context, host)
             tabs.add(tab)
-            urls.optString(i).takeIf { it.isNotEmpty() }?.let(tab::deferLoad)
+            tab.deferLoad(url)
             tab.onPause()
+            if (i == selected) selectTab = tab
         }
-        select(tabs.getOrNull(selected) ?: tabs.first())
+        if (tabs.isEmpty()) return false
+        select(selectTab ?: tabs.last())
         return true
     }
 }

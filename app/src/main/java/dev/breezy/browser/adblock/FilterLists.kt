@@ -64,6 +64,9 @@ object FilterCatalog {
             FilterList.Category.Privacy, defaultEnabled = true),
         FilterList("ublock-privacy", "uBlock privacy", "uBlock Origin's tracker rules", "$UBO/privacy.txt",
             FilterList.Category.Privacy, defaultEnabled = true),
+        FilterList("hide-yt-shorts", "Hide YouTube Shorts", "Removes Shorts from YouTube feeds, search and navigation",
+            "https://raw.githubusercontent.com/gijsdev/ublock-hide-yt-shorts/master/list.txt",
+            FilterList.Category.Annoyances, defaultEnabled = true),
         FilterList("ublock-cookies", "uBlock cookie notices", "Hide cookie consent banners", "$UBO/annoyances-cookies.txt",
             FilterList.Category.Annoyances),
         FilterList("easylist-cookie", "EasyList Cookie", "Cookie banners and GDPR overlays", "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt",
@@ -85,4 +88,7 @@ object FilterCatalog {
     )
 
     val defaultIds: Set<String> = builtIn.filter { it.defaultEnabled }.map { it.id }.toSet()
+
+    /** uBlock Origin's and Brave's own lists may use "trusted" scriptlets (e.g. YouTube ad removal). */
+    fun isTrusted(list: FilterList) = !list.custom && (list.id.startsWith("ublock-") || list.id.startsWith("brave-"))
 }

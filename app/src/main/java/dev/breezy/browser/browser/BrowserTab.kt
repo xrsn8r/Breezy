@@ -28,6 +28,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.net.toUri
+import androidx.webkit.ScriptHandler
+import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -35,6 +37,7 @@ import dev.breezy.browser.AppSettings
 import dev.breezy.browser.R
 import dev.breezy.browser.adblock.NativeShield
 import dev.breezy.browser.adblock.Shield
+import dev.breezy.browser.adblock.UserFilters
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Callbacks a tab needs from the hosting activity. */
@@ -71,6 +74,19 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         private set
     var desktopMode by mutableStateOf(false)
         private set
+
+    /** Element picker state while "Block element" is active; null otherwise. */
+    var picker by mutableStateOf<PickerState?>(null)
+        private set
+
+    data class PickerState(
+        val selector: String = "",
+        val count: Int = 0,
+        val label: String = "",
+        val canParent: Boolean = false,
+        val canChild: Boolean = false,
+        val preview: Boolean = false,
+    )
 
     /** Top-level page URL, read from WebView's IO threads as the request "source". */
     @Volatile private var pageUrl: String = ""
@@ -116,7 +132,9 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         isScrollbarFadingEnabled = true
         overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
 
+        presentAsChrome(settings)
         addJavascriptInterface(CosmeticBridge(), "BreezyShield")
+        addJavascriptInterface(PickerBridge(), "BreezyPicker")
         installCosmeticScript(this)
 
         webViewClient = Client()
@@ -131,6 +149,7 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     }
 
     fun load(input: String) {
+        runCatching { prepareScriptlets(input.toUri()) }
         webView.loadUrl(input)
     }
 
@@ -166,6 +185,9 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     fun destroy() {
         webView.stopLoading()
         webView.removeJavascriptInterface("BreezyShield")
+        webView.removeJavascriptInterface("BreezyPicker")
+        scriptlets.values.forEach { it?.remove() }
+        scriptlets.clear()
         webView.destroy()
     }
 
@@ -214,8 +236,21 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         @JavascriptInterface
         fun resources(frameUrl: String): String {
             if (!Shield.activeFor(pageHost)) return "{}"
-            return NativeShield.cosmeticResources(frameUrl)
+            val json = NativeShield.cosmeticResources(frameUrl)
+            val mine = UserFilters.selectorsFor(runCatching { frameUrl.toUri().host }.getOrNull())
+            if (mine.isEmpty()) return json
+            // Merge the user's own element-hiding rules ("My filters").
+            return runCatching {
+                val obj = org.json.JSONObject(json)
+                val hides = obj.optJSONArray("hide_selectors") ?: org.json.JSONArray().also { obj.put("hide_selectors", it) }
+                mine.forEach(hides::put)
+                obj.toString()
+            }.getOrDefault(json)
         }
+
+        /** True when native already registered this origin's scriptlets as a document-start script. */
+        @JavascriptInterface
+        fun scriptletsHandled(origin: String): Boolean = synchronized(scriptletOrigins) { origin in scriptletOrigins }
 
         @JavascriptInterface
         fun hiddenSelectors(classes: String, ids: String, exceptions: String): String {
@@ -242,7 +277,12 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val scheme = request.url.scheme ?: return false
-            if (scheme == "http" || scheme == "https" || scheme == "about" || scheme == "data") return false
+            if (scheme == "http" || scheme == "https") {
+                // Register this site's scriptlets before its document is created (also on redirects).
+                if (request.isForMainFrame) prepareScriptlets(request.url)
+                return false
+            }
+            if (scheme == "about" || scheme == "data") return false
             // intent:, mailto:, tel:, market: ... hand off to the system.
             return runCatching {
                 val intent = if (scheme == "intent") {
@@ -369,8 +409,108 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         }
     }
 
+    /** The page's visible text (used to import a filter list opened in the tab). */
+    fun pageText(onResult: (String) -> Unit) {
+        webView.evaluateJavascript("document.body ? document.body.innerText : ''") { json ->
+            onResult(runCatching { org.json.JSONTokener(json).nextValue() as String }.getOrDefault(""))
+        }
+    }
+
+    // --- Element picker ------------------------------------------------------------------------------
+
+    fun startPicker() {
+        picker = PickerState()
+        webView.evaluateJavascript(asset(webView.context, PICKER), null)
+    }
+
+    fun pickerParent() = webView.evaluateJavascript("window.__breezyPicker&&__breezyPicker.parent()", null)
+    fun pickerChild() = webView.evaluateJavascript("window.__breezyPicker&&__breezyPicker.child()", null)
+
+    fun pickerSetSelector(selector: String) {
+        picker = picker?.copy(selector = selector)
+        webView.evaluateJavascript("window.__breezyPicker&&__breezyPicker.setSelector(${org.json.JSONObject.quote(selector)})", null)
+    }
+
+    fun pickerPreview(on: Boolean) {
+        picker = picker?.copy(preview = on)
+        webView.evaluateJavascript("window.__breezyPicker&&__breezyPicker.preview($on)", null)
+    }
+
+    /** Save the current selection as a rule for this site and hide it right away. */
+    fun pickerBlock(): Boolean {
+        val state = picker ?: return false
+        val host = pageHost ?: return false
+        if (state.selector.isBlank() || state.count == 0) return false
+        UserFilters.add(host, state.selector)
+        webView.evaluateJavascript("window.__breezyPicker&&__breezyPicker.commit()", null)
+        picker = null
+        return true
+    }
+
+    fun stopPicker() {
+        webView.evaluateJavascript("window.__breezyPicker&&__breezyPicker.stop()", null)
+        picker = null
+    }
+
+    /** Receives selections from assets/breezy/picker.js (binder thread). */
+    private inner class PickerBridge {
+        @JavascriptInterface
+        fun onSelect(json: String) {
+            val o = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return
+            main.post {
+                val current = picker ?: return@post // ignore calls when not picking
+                picker = current.copy(
+                    selector = o.optString("selector"),
+                    count = o.optInt("count"),
+                    label = o.optString("label"),
+                    canParent = o.optBoolean("canParent"),
+                    canChild = o.optBoolean("canChild"),
+                )
+            }
+        }
+    }
+
+    // --- Scriptlets ---------------------------------------------------------------------------------
+
+    /**
+     * uBO scriptlets (e.g. YouTube's ad-removal json-prune) must run before page scripts, and sites
+     * like YouTube forbid eval via CSP/Trusted Types. Document-start scripts registered natively are
+     * neither late nor subject to the page's CSP, so register one per origin just before navigating.
+     */
+    private val scriptlets = HashMap<String, ScriptHandler?>()
+    private val scriptletOrigins = HashSet<String>()
+    private var scriptletGeneration = -1
+
+    private fun prepareScriptlets(uri: android.net.Uri) {
+        if (!documentStartScriptSupported) return
+        val scheme = uri.scheme ?: return
+        val host = uri.host ?: return
+        if (scheme != "https" && scheme != "http") return
+        // Engine reloaded / shields changed: drop registrations and rebuild lazily.
+        if (scriptletGeneration != Shield.generation) {
+            scriptlets.values.forEach { it?.remove() }
+            scriptlets.clear()
+            synchronized(scriptletOrigins) { scriptletOrigins.clear() }
+            scriptletGeneration = Shield.generation
+        }
+        val origin = "$scheme://$host" + if (uri.port != -1) ":${uri.port}" else ""
+        if (origin in scriptlets) return
+        if (!Shield.activeFor(host)) { scriptlets[origin] = null; return }
+        val code = runCatching {
+            org.json.JSONObject(NativeShield.cosmeticResources(uri.toString())).optString("injected_script")
+        }.getOrNull()
+        if (code.isNullOrEmpty()) { scriptlets[origin] = null; return }
+        val wrapped = "(function(){if(window.__breezyScriptlets)return;" +
+            "Object.defineProperty(window,'__breezyScriptlets',{value:true});try{\n$code\n}catch(e){}})();"
+        scriptlets[origin] = runCatching {
+            WebViewCompat.addDocumentStartJavaScript(webView, wrapped, setOf(origin))
+        }.getOrNull()
+        if (scriptlets[origin] != null) synchronized(scriptletOrigins) { scriptletOrigins += origin }
+    }
+
     companion object {
         private var nextId = 1L
+        private const val PICKER = "breezy/picker.js"
         private const val COSMETIC = "adblock/cosmetic.js"
         private const val SCROLL_REPAIR = "breezy/scroll-repair.js"
         private const val FORCE_UNLOCK = "breezy/force-unlock.js"
@@ -383,6 +523,42 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
 
         fun asset(context: Context, path: String): String = synchronized(scripts) {
             scripts.getOrPut(path) { context.assets.open(path).bufferedReader().use { it.readText() } }
+        }
+
+        /**
+         * Present as regular mobile Chrome instead of an embedded WebView: drop the "; wv" token and
+         * "Version/4.0", use Chrome's reduced platform string, stop sending X-Requested-With, and
+         * advertise Chromium client hints. Google sign-in and YouTube treat WebViews differently
+         * (sign-in often refused or not persisted), which also kept YouTube Premium from applying.
+         */
+        private fun presentAsChrome(settings: WebSettings) {
+            val default = settings.userAgentString
+            val chromeVersion = Regex("Chrome/([\\d.]+)").find(default)?.groupValues?.get(1) ?: return
+            val major = chromeVersion.substringBefore('.')
+            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/$major.0.0.0 Mobile Safari/537.36"
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+            }
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+                runCatching {
+                    val brands = listOf(
+                        UserAgentMetadata.BrandVersion.Builder().setBrand("Chromium")
+                            .setMajorVersion(major).setFullVersion(chromeVersion).build(),
+                        UserAgentMetadata.BrandVersion.Builder().setBrand("Not_A Brand")
+                            .setMajorVersion("24").setFullVersion("24.0.0.0").build(),
+                    )
+                    WebSettingsCompat.setUserAgentMetadata(
+                        settings,
+                        UserAgentMetadata.Builder()
+                            .setBrandVersionList(brands)
+                            .setFullVersion(chromeVersion)
+                            .setPlatform("Android")
+                            .setMobile(true)
+                            .build(),
+                    )
+                }
+            }
         }
 
         private fun installCosmeticScript(webView: WebView) {

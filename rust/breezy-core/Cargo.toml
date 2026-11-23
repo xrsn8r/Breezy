@@ -14,6 +14,10 @@ crate-type = ["cdylib", "rlib"]
 name = "breezy-compile"
 path = "src/bin/compile.rs"
 
+[[bin]]
+name = "breezy-resources"
+path = "src/bin/resources.rs"
+
 [dependencies]
 # Disable `single-thread` so Engine is Send + Sync: WebView calls
 # shouldInterceptRequest from a pool of IO threads concurrently.

@@ -38,8 +38,6 @@ object Shield {
     private const val KEY_LISTS_COMPILED = "lists_compiled"
     private const val KEY_CUSTOM = "custom_lists"
     private const val AUTO_UPDATE_INTERVAL = 7L * 24 * 60 * 60 * 1000
-    private const val RESOURCES_URL =
-        "https://raw.githubusercontent.com/brave/adblock-resources/master/dist/resources.json"
 
     private lateinit var prefs: SharedPreferences
     private lateinit var dir: File
@@ -52,6 +50,10 @@ object Shield {
         private set
 
     @Volatile private var allowlist: Set<String> = emptySet()
+
+    /** Bumped whenever the engine or shield settings change, so cached per-site work is redone. */
+    @Volatile var generation = 0
+        private set
 
     private val totalBlocked = AtomicLong()
 
@@ -81,6 +83,7 @@ object Shield {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         dir = File(context.filesDir, "adblock").apply { mkdirs() }
         listsDir = File(dir, "lists").apply { mkdirs() }
+        File(dir, "resources.json").delete()
         enabled = prefs.getBoolean(KEY_ENABLED, true)
         allowlist = prefs.getStringSet(KEY_ALLOWLIST, emptySet())!!.toSet()
         totalBlocked.set(prefs.getLong(KEY_TOTAL, 0))
@@ -97,6 +100,7 @@ object Shield {
         if (!ok) ok = runCatching { NativeShield.loadSerializedFile(bundledEngine(context).path) }.getOrDefault(false)
         if (ok) loadResources(context)
         ready = ok
+        generation++
         Log.i(TAG, "engine loaded=$ok in ${(System.nanoTime() - started) / 1_000_000} ms")
         publish()
     }
@@ -112,10 +116,13 @@ object Shield {
         return file
     }
 
+    /**
+     * Scriptlet/redirect resources always come from the APK: they're Brave's resources merged with
+     * uBlock Origin's scriptlets at build time. (0.2.x stored a Brave-only download in filesDir,
+     * which lacked uBO's scriptlets; it's deleted in [init].)
+     */
     private fun loadResources(context: Context) {
-        val updated = File(dir, "resources.json")
-        val bytes = if (updated.isFile) updated.readBytes()
-        else runCatching { context.assets.open("adblock/resources.json").use { it.readBytes() } }.getOrNull()
+        val bytes = runCatching { context.assets.open("adblock/resources.json").use { it.readBytes() } }.getOrNull()
         if (bytes != null) NativeShield.loadResources(bytes)
     }
 
@@ -157,6 +164,30 @@ object Shield {
         null
     }
 
+    /**
+     * Add a list from text already loaded in a tab ("Add page as filter list"). Useful for lists
+     * behind browser challenges (DDoS-Guard/Cloudflare) that plain downloads can't fetch; later
+     * refreshes fall back to this cached copy if the download is refused.
+     */
+    suspend fun addCustomListFromText(url: String, name: String, text: String): String? = withContext(Dispatchers.IO) {
+        val bytes = text.toByteArray()
+        if (text.trimStart().startsWith("<")) return@withContext "This page isn't a filter list"
+        val rules = countRules(bytes)
+        if (rules < 1) return@withContext "No filter rules found on this page"
+        val id = "custom-" + Integer.toHexString(url.hashCode())
+        listFile(id).writeBytes(bytes)
+        saveMeta(id, rules, bytes.size.toLong())
+        val title = Regex("^! *Title: *(.+)$", RegexOption.MULTILINE).find(text)?.groupValues?.get(1)?.trim()
+        val list = FilterList(id, name.ifBlank { title ?: (url.toUri().host ?: url) }, url, url,
+            FilterList.Category.Custom, custom = true)
+        prefs.edit {
+            putString(KEY_CUSTOM, FilterList.customListToJson(customLists().filter { it.id != id } + list))
+            putStringSet(KEY_LISTS_ENABLED, enabledIds() + id)
+        }
+        publish()
+        null
+    }
+
     fun removeCustomList(id: String) {
         listFile(id).delete()
         prefs.edit {
@@ -190,6 +221,7 @@ object Shield {
         val result = runCatching {
             val wanted = allLists().filter { it.id in enabledIds() }
             val texts = mutableListOf<ByteArray>()
+            val trusted = mutableListOf<Boolean>()
             val included = mutableSetOf<String>()
             for (list in wanted) {
                 val file = listFile(list.id)
@@ -200,13 +232,12 @@ object Shield {
                 }
                 if (file.isFile) {
                     texts += file.readBytes()
+                    trusted += FilterCatalog.isTrusted(list)
                     included += list.id
                 }
             }
             check(texts.isNotEmpty()) { "No filter lists could be downloaded" }
-            val resources = if (refresh) runCatching { download(RESOURCES_URL) }.getOrNull() else null
-            check(NativeShield.compileLists(texts.toTypedArray())) { "compile failed" }
-            if (resources != null) File(dir, "resources.json").writeBytes(resources)
+            check(NativeShield.compileLists(texts.toTypedArray(), trusted.toBooleanArray())) { "compile failed" }
             loadResources(context)
             val tmp = File(dir, "engine.dat.tmp")
             tmp.writeBytes(NativeShield.serialize())
@@ -216,6 +247,7 @@ object Shield {
                 if (refresh) putLong(KEY_UPDATED, System.currentTimeMillis())
             }
             ready = true
+            generation++
         }
         result.exceptionOrNull()?.let { Log.w(TAG, "list rebuild failed", it) }
         val error = result.exceptionOrNull()?.message
@@ -280,6 +312,7 @@ object Shield {
 
     fun setEnabled(value: Boolean) {
         enabled = value
+        generation++
         prefs.edit { putBoolean(KEY_ENABLED, value) }
         publish()
     }
@@ -291,6 +324,7 @@ object Shield {
 
     fun setSiteAllowed(host: String, allowed: Boolean) {
         allowlist = if (allowed) allowlist + host else allowlist - host
+        generation++
         prefs.edit { putStringSet(KEY_ALLOWLIST, allowlist) }
         publish()
     }

@@ -5,7 +5,7 @@
 //! modified-UTF-8 conversion JNI applies to `String`s.
 
 use jni::JNIEnv;
-use jni::objects::{JByteArray, JClass, JObjectArray, JString};
+use jni::objects::{JBooleanArray, JByteArray, JClass, JObjectArray, JString};
 use jni::sys::{jboolean, jbyteArray, jint, jstring, JNI_FALSE, JNI_TRUE};
 
 use crate::Decision;
@@ -25,12 +25,13 @@ fn bool_j(b: bool) -> jboolean {
     if b { JNI_TRUE } else { JNI_FALSE }
 }
 
-/// `compileLists(lists: Array<ByteArray>): Boolean`
+/// `compileLists(lists: Array<ByteArray>, trusted: BooleanArray): Boolean`
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_compileLists(
     mut env: JNIEnv,
     _class: JClass,
     lists: JObjectArray,
+    trusted: JBooleanArray,
 ) -> jboolean {
     let Ok(len) = env.get_array_length(&lists) else {
         return JNI_FALSE;
@@ -47,7 +48,12 @@ pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_compileLists
         let _ = env.delete_local_ref(bytes);
         texts.push(String::from_utf8_lossy(&raw).into_owned());
     }
-    crate::load_lists(texts.iter().map(String::as_str));
+    let mut flags = vec![0u8; texts.len()];
+    if !trusted.is_null() {
+        let n = env.get_array_length(&trusted).unwrap_or(0) as usize;
+        let _ = env.get_boolean_array_region(&trusted, 0, &mut flags[..n.min(texts.len())]);
+    }
+    crate::load_lists_trusted(texts.iter().zip(flags).map(|(t, f)| (t.as_str(), f == JNI_TRUE)));
     JNI_TRUE
 }
 

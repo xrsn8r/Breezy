@@ -13,7 +13,9 @@
   if (!res || !res.hide_selectors) return; // shields off for this site, or engine not ready
 
   // --- Scriptlets (uBO-style ##+js(...)) --------------------------------------------------
-  if (res.injected_script) {
+  var nativeScriptlets = false;
+  try { nativeScriptlets = window.__breezyScriptlets || api.scriptletsHandled(location.origin); } catch (e) {}
+  if (res.injected_script && !nativeScriptlets) {
     try {
       (0, eval)(res.injected_script);
     } catch (e) {

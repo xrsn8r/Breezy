@@ -37,6 +37,20 @@ shield sheet recompiles on-device and caches the result.
 
 ## Features
 
+- **Block element**: Menu → Block element, then tap anything on the page. You can widen or narrow the
+  selection, edit the CSS selector, and preview it before blocking. Rules are saved under
+  Settings → My filters and apply instantly, without an engine rebuild.
+- **Full uBlock Origin scriptlet support**: the build extracts uBO's scriptlets (`json-prune`,
+  `set-constant`, `trusted-replace-xhr-response`, …) statically from the uBO source with
+  `breezy-resources` and merges them with Brave's resources. Without them, uBO's rules, including
+  YouTube video-ad removal, had nothing to run. Scriptlets are registered as native document-start
+  scripts for each site, so they run before page scripts and aren't blocked by CSP or Trusted Types.
+- **Home page shortcuts**: add with the + tile or Menu → Add to home, and long-press a tile to edit
+  or remove it. The home page isn't a tab: closing the last tab goes back to it.
+- **Copy link**: long-press the address in the toolbar. Long-press and drag moves the toolbar.
+- **Add page as filter list**: open a raw filter list in a tab (useful for lists behind browser
+  challenges) and add it from the menu.
+- **Hide YouTube Shorts** list enabled by default.
 - **Settings → Filter lists**: toggle a catalog of lists (EasyList, EasyPrivacy, uBlock filters,
   privacy, cookie notices, annoyances, badware, URLhaus, AdGuard Mobile, Peter Lowe, and fix lists)
   or add any list by HTTPS URL. Lists are cached on the device, so "Apply" only downloads what's new.
@@ -64,6 +78,8 @@ Store). Breezy additionally:
 - Excludes all app data from cloud backup and device transfer.
 - Downloads filter lists over HTTPS only, with a size cap, and sanitizes download file names.
 - Only allows WebView remote debugging in debug builds.
+- Presents itself as mobile Chrome (no WebView `wv` token, no `X-Requested-With` header) so Google
+  sign-in works and sites don't serve WebView-specific behaviour.
 
 ## Building
 

@@ -5,7 +5,8 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -52,7 +53,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
@@ -80,7 +85,7 @@ import kotlin.math.roundToInt
 fun MovableBrowserBar(
     hazeState: HazeState,
     expanded: Boolean,
-    tab: BrowserTab,
+    tab: BrowserTab?,
     tabCount: Int,
     shieldsActive: Boolean,
     onShield: () -> Unit,
@@ -88,6 +93,7 @@ fun MovableBrowserBar(
     onTabs: () -> Unit,
     onMenu: () -> Unit,
     onSearch: () -> Unit,
+    onCopyLink: () -> Unit,
 ) {
     BoxWithConstraints(
         Modifier
@@ -111,6 +117,8 @@ fun MovableBrowserBar(
         )
         val lift by animateFloatAsState(if (dragging) 1.05f else 1f, label = "barLift")
         val haptics = LocalHapticFeedback.current
+        var rowBounds by remember { mutableStateOf(Rect.Zero) }
+        var pillBounds by remember { mutableStateOf(Rect.Zero) }
 
         Row(
             modifier = Modifier
@@ -118,25 +126,57 @@ fun MovableBrowserBar(
                 .onSizeChanged { barHeight = it.height }
                 .offset { IntOffset(0, -(shown * travel).roundToInt()) }
                 .graphicsLayer { scaleX = lift; scaleY = lift }
+                .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                 .pointerInput(travel) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = {
-                            dragging = true
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        },
-                        onDragEnd = { dragging = false; AppSettings.updateToolbarPosition(position) },
-                        onDragCancel = { dragging = false; AppSettings.updateToolbarPosition(position) },
-                        onDrag = { change, amount ->
-                            change.consume()
-                            if (travel > 0f) position = (position - amount.y / travel).coerceIn(0f, 1f)
-                        },
-                    )
+                    // Hold anywhere and drag: move the toolbar. Hold the address without moving:
+                    // copy the link. Taps fall through to the buttons as usual.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        // Non-null if the finger lifts or moves before the long-press timeout.
+                        val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                            var done = false
+                            while (!done) {
+                                val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                val ch = ev.changes.firstOrNull { it.id == down.id }
+                                done = ch == null || !ch.pressed ||
+                                    (ch.position - down.position).getDistance() > viewConfiguration.touchSlop
+                            }
+                            true
+                        }
+                        if (released != null) return@awaitEachGesture // tap or swipe: not ours
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val downInRoot = rowBounds.topLeft + down.position
+                        val onAddressPill = pillBounds.contains(downInRoot)
+                        var moved = false
+                        while (true) {
+                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                            // Consume so the button under the finger doesn't also get a click.
+                            ev.changes.forEach { it.consume() }
+                            if (!ch.pressed) break
+                            if (!moved && (ch.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                moved = true
+                                dragging = true
+                            }
+                            if (moved && travel > 0f) {
+                                val dy = ch.position.y - ch.previousPosition.y
+                                position = (position - dy / travel).coerceIn(0f, 1f)
+                            }
+                        }
+                        if (moved) {
+                            dragging = false
+                            AppSettings.updateToolbarPosition(position)
+                        } else if (onAddressPill && tab != null && tab.url.isNotEmpty()) {
+                            onCopyLink()
+                        }
+                    }
                 },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FrostedToolbar(
                 hazeState = hazeState,
+                onPillPositioned = { pillBounds = it },
                 expanded = expanded || dragging,
                 tab = tab,
                 tabCount = tabCount,
@@ -161,8 +201,9 @@ fun MovableBrowserBar(
 @Composable
 private fun FrostedToolbar(
     hazeState: HazeState,
+    onPillPositioned: (Rect) -> Unit,
     expanded: Boolean,
-    tab: BrowserTab,
+    tab: BrowserTab?,
     tabCount: Int,
     shieldsActive: Boolean,
     onShield: () -> Unit,
@@ -199,8 +240,9 @@ private fun FrostedToolbar(
         leadingContent = {
             IconButton(onClick = onShield) {
                 BadgedBox(badge = {
-                    if (shieldsActive && tab.blockedCount > 0) {
-                        Badge { Text(if (tab.blockedCount > 99) "99+" else tab.blockedCount.toString()) }
+                    val blocked = tab?.blockedCount ?: 0
+                    if (shieldsActive && blocked > 0) {
+                        Badge { Text(if (blocked > 99) "99+" else blocked.toString()) }
                     }
                 }) {
                     Icon(
@@ -234,13 +276,15 @@ private fun FrostedToolbar(
             modifier = Modifier
                 .widthIn(min = 96.dp, max = 168.dp)
                 .height(40.dp)
+                .onGloballyPositioned { onPillPositioned(it.boundsInRoot()) }
                 .clip(CircleShape)
                 .clickable(role = Role.Button, onClick = onAddress)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val secure = UrlInput.isSecure(tab.url)
-            if (tab.url.isNotEmpty()) {
+            val url = tab?.url.orEmpty()
+            val secure = UrlInput.isSecure(url)
+            if (url.isNotEmpty()) {
                 Icon(
                     if (secure) Icons.Rounded.Lock else Icons.Rounded.Language,
                     contentDescription = if (secure) "Secure" else "Not secure",
@@ -249,7 +293,7 @@ private fun FrostedToolbar(
                 Spacer(Modifier.width(6.dp))
             }
             Text(
-                text = UrlInput.display(tab.url).ifEmpty { "Search" },
+                text = UrlInput.display(url).ifEmpty { "Search" },
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

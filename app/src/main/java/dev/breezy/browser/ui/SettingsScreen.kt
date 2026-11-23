@@ -418,7 +418,8 @@ fun SettingsScreen(
             item(key = "advanced") {
                 SettingsGroup(
                     title = "Advanced",
-                    summary = if (AppSettings.identifyAsChrome) "Identifying as Chrome" else "Identifying as WebView",
+                    summary = (if (AppSettings.identifyAsChrome) "Identifying as Chrome" else "Identifying as WebView") +
+                        " · updates " + (if (AppSettings.autoCheckUpdates) "on" else "off"),
                     icon = Icons.Rounded.Tune,
                 ) {
                     ToggleRow("Identify as Chrome", "Helps Google/YouTube sign-in. Turn off if a site misbehaves (reloads tabs)",
@@ -426,6 +427,9 @@ fun SettingsScreen(
                         AppSettings.updateIdentifyAsChrome(it)
                         onDarkPagesChanged() // recreates tabs so the new identity applies
                     }
+                    ToggleRow("Check for updates automatically", "Look for a new Breezy release on GitHub once a day",
+                        AppSettings.autoCheckUpdates, AppSettings::updateAutoCheckUpdates)
+                    UpdateRow()
                     ListItem(
                         headlineContent = { Text("Share diagnostics") },
                         supportingContent = { Text("Recent app exits and events, to report a bug. No pages or history") },
@@ -633,6 +637,40 @@ private fun ToggleRow(title: String, summary: String, checked: Boolean, onChange
         supportingContent = { Text(summary) },
         trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
         colors = cardItemColors(),
+    )
+}
+
+@Composable
+private fun UpdateRow() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val status = dev.breezy.browser.data.Updater.status
+    val (headline, detail) = when (status) {
+        is dev.breezy.browser.data.Updater.Status.Available -> "Update to ${status.release.version}" to "Download and install the new version"
+        is dev.breezy.browser.data.Updater.Status.Downloading -> "Downloading ${status.release.version}…" to "Progress is in Downloads; the installer opens when it's done"
+        dev.breezy.browser.data.Updater.Status.Verifying -> "Verifying download…" to "Checking it against the published checksum"
+        dev.breezy.browser.data.Updater.Status.Checking -> "Checking for updates…" to "Breezy ${dev.breezy.browser.BuildConfig.VERSION_NAME}"
+        dev.breezy.browser.data.Updater.Status.UpToDate -> "Breezy is up to date" to "Version ${dev.breezy.browser.BuildConfig.VERSION_NAME}"
+        is dev.breezy.browser.data.Updater.Status.Failed -> "Check for updates" to status.message
+        dev.breezy.browser.data.Updater.Status.Idle -> "Check for updates" to "Version ${dev.breezy.browser.BuildConfig.VERSION_NAME}"
+    }
+    ListItem(
+        headlineContent = { Text(headline) },
+        supportingContent = { Text(detail) },
+        trailingContent = {
+            if (status is dev.breezy.browser.data.Updater.Status.Checking || status is dev.breezy.browser.data.Updater.Status.Verifying) {
+                LoadingIndicator(Modifier.size(28.dp))
+            }
+        },
+        colors = cardItemColors(),
+        modifier = Modifier.clickable {
+            when (status) {
+                is dev.breezy.browser.data.Updater.Status.Available -> dev.breezy.browser.data.Updater.download(status.release)
+                is dev.breezy.browser.data.Updater.Status.Downloading, dev.breezy.browser.data.Updater.Status.Verifying,
+                dev.breezy.browser.data.Updater.Status.Checking -> Unit
+                else -> scope.launch { dev.breezy.browser.data.Updater.check(context.applicationContext) }
+            }
+        },
     )
 }
 

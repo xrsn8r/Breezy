@@ -119,6 +119,7 @@ class MainActivity : ComponentActivity(), TabHost {
                 v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
                 insets
             }
+            lifecycleScope.launch { dev.breezy.browser.data.Updater.checkIfDue(applicationContext) }
             lifecycleScope.launch {
                 snapshotFlow { tabs.current }.collect { attachToHost(it); updatePip() }
             }

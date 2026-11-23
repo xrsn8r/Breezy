@@ -99,6 +99,7 @@ object AppSettings {
 
     var autoUpdateLists by mutableStateOf(true)
         private set
+    var autoCheckUpdates by mutableStateOf(true); private set
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -125,6 +126,7 @@ object AppSettings {
             .getOrDefault(SearchEngine.Startpage)
         toolbarPosition = prefs.getFloat("toolbar_position", 0f)
         autoUpdateLists = prefs.getBoolean("auto_update_lists", true)
+        autoCheckUpdates = prefs.getBoolean("auto_check_updates", true)
         shortcuts.clear()
         val saved = prefs.getString("shortcuts", null)
         shortcuts.addAll(
@@ -214,6 +216,8 @@ object AppSettings {
         toolbarPosition = value.coerceIn(0f, 1f)
         prefs.edit { putFloat("toolbar_position", toolbarPosition) }
     }
+
+    fun updateAutoCheckUpdates(value: Boolean) { autoCheckUpdates = value; prefs.edit { putBoolean("auto_check_updates", value) } }
 
     fun updateAutoUpdateLists(value: Boolean) {
         autoUpdateLists = value

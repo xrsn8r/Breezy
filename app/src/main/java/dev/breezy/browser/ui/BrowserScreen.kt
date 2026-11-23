@@ -353,6 +353,14 @@ fun BrowserScreen(
     // "Downloaded <file> · Open", like other browsers, so an APK installs in one tap.
     LaunchedEffect(Unit) {
         dev.breezy.browser.downloads.Downloads.completed.collect { job ->
+            // A Breezy update the user asked for: verify, then go straight to the installer.
+            if (dev.breezy.browser.data.Updater.onDownloadCompleted(context, job.id)) {
+                (context as? android.app.Activity)?.let { dev.breezy.browser.downloads.FileOpener.open(it, job) }
+                return@collect
+            }
+            if (dev.breezy.browser.data.Updater.status is dev.breezy.browser.data.Updater.Status.Failed) {
+                Toast.makeText(context, (dev.breezy.browser.data.Updater.status as dev.breezy.browser.data.Updater.Status.Failed).message, Toast.LENGTH_LONG).show()
+            }
             val result = snackbar.showSnackbar(
                 message = "Downloaded ${job.fileName}".take(60),
                 actionLabel = if (dev.breezy.browser.downloads.Downloads.isApk(job)) "Install" else "Open",
@@ -362,6 +370,25 @@ fun BrowserScreen(
             if (result == SnackbarResult.ActionPerformed) {
                 (context as? android.app.Activity)?.let { dev.breezy.browser.downloads.FileOpener.open(it, job) }
             }
+        }
+    }
+
+    // "Breezy x.y.z is available · Update", once per version unless dismissed.
+    val update = (dev.breezy.browser.data.Updater.status as? dev.breezy.browser.data.Updater.Status.Available)?.release
+    LaunchedEffect(update?.version) {
+        val r = update ?: return@LaunchedEffect
+        if (dev.breezy.browser.data.Updater.dismissed(context, r.version)) return@LaunchedEffect
+        val result = snackbar.showSnackbar(
+            message = "Breezy ${r.version} is available",
+            actionLabel = "Update",
+            withDismissAction = true,
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            dev.breezy.browser.data.Updater.download(r)
+            Toast.makeText(context, "Downloading Breezy ${r.version}…", Toast.LENGTH_SHORT).show()
+        } else {
+            dev.breezy.browser.data.Updater.dismiss(context, r.version)
         }
     }
 

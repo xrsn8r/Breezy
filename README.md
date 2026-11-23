@@ -98,6 +98,9 @@ shield sheet recompiles on-device and caches the result.
   was dismissed) get unlocked automatically. The menu also has **Unlock scrolling** and
   **Page diagnostics**.
 - **Search engine**: Startpage by default, with DuckDuckGo, Brave Search and Google available.
+- **In-app updates**: checks this repo's latest GitHub Release once a day (Settings → Advanced, can
+  be turned off), offers **Update**, downloads the APK, checks it against `SHA256SUMS.txt` and
+  opens the installer. Android only accepts it if it's signed with the same key.
 - **Theme**: System, Light or Dark, plus a **pure black (AMOLED)** option for dark theme.
 - **Settings in collapsible groups** (Appearance, Search & browsing, Privacy & security, Shields,
   Filter lists, Downloads & media, Advanced), each showing a summary of its current values.

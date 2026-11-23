@@ -41,7 +41,27 @@ object AppSettings {
     var darkWebPages by mutableStateOf(true)
         private set
 
+    /**
+     * Algorithmically recolor sites that have no dark theme. Off by default: it flips the colors of
+     * already-dark sites that don't declare `color-scheme: dark` (white buttons become invisible,
+     * login forms lose their text).
+     */
+    var forceDarkAllSites by mutableStateOf(false)
+        private set
+
     var searchEngine by mutableStateOf(SearchEngine.Startpage)
+        private set
+
+    /**
+     * Real backdrop blur behind the floating toolbar (Android 16+). Off by default while we confirm
+     * whether it causes some pages (X login, blurred-backdrop dialogs) to render incorrectly: the
+     * window backdrop forces offscreen rendering, which WebView doesn't always survive.
+     */
+    var frostedToolbar by mutableStateOf(false)
+        private set
+
+    /** Present as mobile Chrome rather than an Android WebView (sign-in compatibility). */
+    var identifyAsChrome by mutableStateOf(true)
         private set
 
     /** Floating toolbar position: 0 = bottom, 1 = top of the available area. */
@@ -54,6 +74,9 @@ object AppSettings {
     fun init(context: Context) {
         prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         darkWebPages = prefs.getBoolean("dark_web_pages", true)
+        forceDarkAllSites = prefs.getBoolean("force_dark_all_sites", false)
+        frostedToolbar = prefs.getBoolean("frosted_toolbar", false)
+        identifyAsChrome = prefs.getBoolean("identify_as_chrome", true)
         searchEngine = runCatching { SearchEngine.valueOf(prefs.getString("search_engine", null)!!) }
             .getOrDefault(SearchEngine.Startpage)
         toolbarPosition = prefs.getFloat("toolbar_position", 0f)
@@ -95,6 +118,21 @@ object AppSettings {
     fun updateDarkWebPages(value: Boolean) {
         darkWebPages = value
         prefs.edit { putBoolean("dark_web_pages", value) }
+    }
+
+    fun updateForceDarkAllSites(value: Boolean) {
+        forceDarkAllSites = value
+        prefs.edit { putBoolean("force_dark_all_sites", value) }
+    }
+
+    fun updateFrostedToolbar(value: Boolean) {
+        frostedToolbar = value
+        prefs.edit { putBoolean("frosted_toolbar", value) }
+    }
+
+    fun updateIdentifyAsChrome(value: Boolean) {
+        identifyAsChrome = value
+        prefs.edit { putBoolean("identify_as_chrome", value) }
     }
 
     fun updateSearchEngine(value: SearchEngine) {

@@ -125,14 +125,17 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
             WebSettingsCompat.setSafeBrowsingEnabled(settings, true)
         }
+        // With a dark context theme, pages always see prefers-color-scheme: dark (sites with a real
+        // dark theme use it). Algorithmic recoloring of everything else is opt-in: it breaks
+        // already-dark sites that don't declare color-scheme (invisible buttons and form text).
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, dark && AppSettings.forceDarkAllSites)
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
         isScrollbarFadingEnabled = true
         overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
 
-        presentAsChrome(settings)
+        if (AppSettings.identifyAsChrome) presentAsChrome(settings)
         addJavascriptInterface(CosmeticBridge(), "BreezyShield")
         addJavascriptInterface(PickerBridge(), "BreezyPicker")
         installCosmeticScript(this)

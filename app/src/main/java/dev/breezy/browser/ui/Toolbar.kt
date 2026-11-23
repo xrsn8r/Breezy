@@ -3,6 +3,7 @@ package dev.breezy.browser.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -234,7 +235,11 @@ private fun FrostedToolbar(
         expanded = expanded,
         modifier = Modifier
             .clip(shape)
-            .hazeBlur(input = HazeInput.Backdrop(hazeState), style = glass)
+            .then(
+                if (AppSettings.frostedToolbar) Modifier.hazeBlur(input = HazeInput.Backdrop(hazeState), style = glass)
+                // No backdrop sampling at all: a solid, slightly translucent surface.
+                else Modifier.background(tint.copy(alpha = 0.94f)),
+            )
             .border(1.dp, outline.copy(alpha = 0.5f), shape),
         shape = shape,
         colors = FloatingToolbarDefaults.standardFloatingToolbarColors(

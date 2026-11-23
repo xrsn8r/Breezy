@@ -126,12 +126,27 @@ fun SettingsScreen(
                 SettingsCard {
                     ListItem(
                         headlineContent = { Text("Dark mode for websites") },
-                        supportingContent = { Text("Sites use their dark theme, or are darkened automatically") },
+                        supportingContent = { Text("Sites that have a dark theme use it") },
                         trailingContent = {
                             Switch(checked = AppSettings.darkWebPages, onCheckedChange = {
                                 AppSettings.updateDarkWebPages(it)
                                 onDarkPagesChanged()
                             })
+                        },
+                        colors = cardItemColors(),
+                    )
+                    ListItem(
+                        headlineContent = { Text("Force dark on all sites") },
+                        supportingContent = { Text("Recolors sites without a dark theme. Can make some pages unreadable") },
+                        trailingContent = {
+                            Switch(
+                                checked = AppSettings.forceDarkAllSites,
+                                enabled = AppSettings.darkWebPages,
+                                onCheckedChange = {
+                                    AppSettings.updateForceDarkAllSites(it)
+                                    onDarkPagesChanged()
+                                },
+                            )
                         },
                         colors = cardItemColors(),
                     )
@@ -168,6 +183,32 @@ fun SettingsScreen(
                         trailingContent = {
                             TextButton(onClick = { AppSettings.updateToolbarPosition(0f) },
                                 enabled = AppSettings.toolbarPosition != 0f) { Text("Reset") }
+                        },
+                        colors = cardItemColors(),
+                    )
+                }
+            }
+
+            // --- Troubleshooting -------------------------------------------------------------------
+            item { SectionHeader("Troubleshooting") }
+            item {
+                SettingsCard {
+                    ListItem(
+                        headlineContent = { Text("Frosted toolbar blur") },
+                        supportingContent = { Text("Real blur behind the toolbar (Android 16+). Turn off if some pages render blank or half-drawn") },
+                        trailingContent = {
+                            Switch(checked = AppSettings.frostedToolbar, onCheckedChange = AppSettings::updateFrostedToolbar)
+                        },
+                        colors = cardItemColors(),
+                    )
+                    ListItem(
+                        headlineContent = { Text("Identify as Chrome") },
+                        supportingContent = { Text("Helps Google/YouTube sign-in. Turn off if a site misbehaves (reloads tabs)") },
+                        trailingContent = {
+                            Switch(checked = AppSettings.identifyAsChrome, onCheckedChange = {
+                                AppSettings.updateIdentifyAsChrome(it)
+                                onDarkPagesChanged() // recreates tabs so the new identity applies
+                            })
                         },
                         colors = cardItemColors(),
                     )

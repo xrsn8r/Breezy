@@ -15,6 +15,9 @@ object NativeShield {
     /** Load an engine produced by [serialize] / the build-time compiler. */
     @JvmStatic external fun loadSerialized(bytes: ByteArray): Boolean
 
+    /** Same as [loadSerialized] but read natively from a file (no Java-heap copy). */
+    @JvmStatic external fun loadSerializedFile(path: String): Boolean
+
     @JvmStatic external fun serialize(): ByteArray
 
     /** Load Brave/uBO scriptlet + redirect resources (resources.json). Returns count or -1. */

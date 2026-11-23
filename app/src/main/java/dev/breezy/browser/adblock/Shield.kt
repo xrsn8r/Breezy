@@ -1,6 +1,7 @@
 package dev.breezy.browser.adblock
 
 import android.content.Context
+import dev.breezy.browser.BuildConfig
 import android.content.SharedPreferences
 import android.util.Base64
 import android.util.Log
@@ -80,17 +81,26 @@ object Shield {
     /** Load the engine. Call once from a background thread at app start. */
     suspend fun load(context: Context) = withContext(Dispatchers.IO) {
         val started = System.nanoTime()
+        // 1. Engine from an on-device list update, 2. bundled engine (unpacked once per app
+        //    version so later launches read it natively without touching the Java heap).
         val cached = File(dir, "engine.dat")
-        var ok = cached.isFile && NativeShield.loadSerialized(cached.readBytes())
-        if (!ok) {
-            ok = runCatching {
-                context.assets.open("adblock/engine.dat").use { NativeShield.loadSerialized(it.readBytes()) }
-            }.getOrDefault(false)
-        }
+        var ok = cached.isFile && NativeShield.loadSerializedFile(cached.path)
+        if (!ok) ok = runCatching { NativeShield.loadSerializedFile(bundledEngine(context).path) }.getOrDefault(false)
         if (ok) loadResources(context)
         ready = ok
         Log.i(TAG, "engine loaded=$ok in ${(System.nanoTime() - started) / 1_000_000} ms")
         publish()
+    }
+
+    private fun bundledEngine(context: Context): File {
+        val file = File(dir, "bundled-${BuildConfig.VERSION_CODE}.dat")
+        if (!file.isFile) {
+            dir.listFiles { f -> f.name.startsWith("bundled-") }?.forEach { it.delete() }
+            val tmp = File(dir, "bundled.tmp")
+            context.assets.open("adblock/engine.dat").use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            tmp.renameTo(file)
+        }
+        return file
     }
 
     private fun loadResources(context: Context) {

@@ -74,6 +74,12 @@ pub fn load_serialized(bytes: &[u8]) -> bool {
     true
 }
 
+/// Like [`load_serialized`] but reads the file natively, avoiding a multi-megabyte copy through
+/// the Java heap on every launch.
+pub fn load_serialized_file(path: &str) -> bool {
+    std::fs::read(path).map(|b| load_serialized(&b)).unwrap_or(false)
+}
+
 /// Serialize the current engine for fast reloading. Empty if no engine is loaded.
 pub fn serialize_current() -> Vec<u8> {
     current().map(|e| e.serialize()).unwrap_or_default()
@@ -195,6 +201,10 @@ example.org##.ad-banner
         assert!(!bytes.is_empty());
         assert!(load_serialized(&bytes));
         assert!(!load_serialized(b"garbage"));
+        let path = std::env::temp_dir().join("breezy-test-engine.dat");
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(load_serialized_file(path.to_str().unwrap()));
+        assert!(!load_serialized_file("/nonexistent/engine.dat"));
         assert_eq!(
             check("https://ads.example.com/x.js", "https://a.test/", "script", "GET"),
             Decision::Block

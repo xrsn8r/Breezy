@@ -50,6 +50,17 @@ re-download the lists.
 
 Rust tests: `cd rust && cargo test`
 
+Release builds ship **arm64-v8a only**. Debug builds also include x86_64 and armeabi-v7a.
+Override the ABIs with `-PbreezyAbis=arm64-v8a,x86_64`.
+
+## Releases
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds the arm64 APK and publishes
+a GitHub Release with the APK and its SHA-256 checksum. To sign with your own key, add these
+repository secrets: `BREEZY_KEYSTORE_BASE64` (`base64 -w0 release.jks`),
+`BREEZY_KEYSTORE_PASSWORD`, `BREEZY_KEY_ALIAS` and `BREEZY_KEY_PASSWORD`. Without them the APK is
+signed with a throwaway debug key, which means each release can't install over the previous one.
+
 ## Filter lists
 
 EasyList, EasyPrivacy, uBlock Origin filters and privacy, Brave unbreak, plus Brave's

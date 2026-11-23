@@ -1,0 +1,9 @@
+# arm64 tuning. We stay on the baseline ARMv8.0-A ISA (+neon) so Cortex-A53-class devices keep
+# working, and enable outline-atomics so ARMv8.1+ cores use LSE atomics picked at runtime (the
+# engine's Arc/RwLock hot path), with LL/SC fallback on older cores.
+[target.aarch64-linux-android]
+rustflags = [
+    "-C", "target-feature=+neon,+outline-atomics",
+    # Required for Android 15+ 16 KB page-size devices (NDK r28 already defaults to this).
+    "-C", "link-arg=-Wl,-z,max-page-size=16384",
+]

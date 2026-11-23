@@ -64,6 +64,19 @@ pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_loadSerializ
     }
 }
 
+/// `loadSerializedFile(path: String): Boolean`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_loadSerializedFile(
+    mut env: JNIEnv,
+    _class: JClass,
+    path: JString,
+) -> jboolean {
+    match jstr(&mut env, &path) {
+        Some(p) => bool_j(crate::load_serialized_file(&p)),
+        None => JNI_FALSE,
+    }
+}
+
 /// `serialize(): ByteArray`
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_serialize(

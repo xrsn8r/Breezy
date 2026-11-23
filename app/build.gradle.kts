@@ -23,6 +23,13 @@ val rustAbis = mapOf(
 )
 val minSdkVersion = 26
 
+// Release builds target arm64-v8a only (virtually every Android phone in use); debug builds also
+// include x86_64 (emulators) and armeabi-v7a. Override with -PbreezyAbis=arm64-v8a,x86_64.
+val releaseAbis = listOf("arm64-v8a")
+val debugAbis = rustAbis.keys.toList()
+val abiOverride: List<String>? = providers.gradleProperty("breezyAbis").orNull?.split(',')?.map { it.trim() }
+fun abisFor(release: Boolean) = abiOverride ?: if (release) releaseAbis else debugAbis
+
 val filterLists = mapOf(
     "easylist.txt" to "https://easylist.to/easylist/easylist.txt",
     "easyprivacy.txt" to "https://easylist.to/easylist/easyprivacy.txt",
@@ -137,18 +144,29 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
-        // Only ship ABIs we actually build Rust for.
-        ndk { abiFilters += rustAbis.keys }
+    }
+
+    // Optional release signing from the environment (CI secrets); falls back to the debug key.
+    val keystorePath = System.getenv("BREEZY_KEYSTORE")
+    if (keystorePath != null) {
+        signingConfigs.create("release") {
+            storeFile = file(keystorePath)
+            storePassword = System.getenv("BREEZY_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("BREEZY_KEY_ALIAS")
+            keyPassword = System.getenv("BREEZY_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
+        debug {
+            ndk { abiFilters += abisFor(release = false) }
+        }
         release {
+            ndk { abiFilters += abisFor(release = true) }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Debug-signed so `assembleRelease` produces an installable APK out of the box.
-            // Replace with your own signing config before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -164,11 +182,6 @@ android {
 
     packaging {
         jniLibs.useLegacyPackaging = false
-    }
-
-    androidResources {
-        // The engine is already compact; keep it uncompressed so it can be read without inflating.
-        noCompress += "dat"
     }
 }
 
@@ -187,7 +200,7 @@ androidComponents {
         val cap = variant.name.replaceFirstChar { it.uppercase() }
         val cargo = tasks.register<CargoNdkTask>("cargoNdkBuild$cap") {
             rustSources.from(rustSourceFiles)
-            abis.set(rustAbis.keys.toList())
+            abis.set(abisFor(release = variant.buildType == "release"))
             platform.set(minSdkVersion)
             release.set(true) // debug Rust builds of adblock-rust are ~10x slower; always optimise.
             workingDir.set(rustDir)

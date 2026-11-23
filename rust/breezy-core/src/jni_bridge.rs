@@ -197,3 +197,20 @@ pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_hiddenSelect
     let json = crate::hidden_class_id_selectors_json(&classes, &ids, &exceptions);
     new_jstring(&mut env, &json)
 }
+
+/// `registrableDomain(host: String): String`: the eTLD+1 ("news.bbc.co.uk" -> "bbc.co.uk"),
+/// or the host itself when it is an IP address or a public suffix.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_registrableDomain(
+    mut env: JNIEnv,
+    _class: JClass,
+    host: JString,
+) -> jstring {
+    use adblock::url_parser::ResolvesDomain;
+    let Some(host) = jstr(&mut env, &host) else {
+        return std::ptr::null_mut();
+    };
+    let (start, end) = crate::psl::PslResolver.get_host_domain(&host);
+    let domain = host.get(start..end).filter(|d| !d.is_empty()).unwrap_or(&host);
+    new_jstring(&mut env, domain)
+}

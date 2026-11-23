@@ -51,5 +51,8 @@ object NativeShield {
     @JvmStatic external fun scriptlets(url: String): String
 
     /** JSON array of generic hide selectors for the given class/id JSON arrays. */
+    /** eTLD+1 of [host] using the bundled Public Suffix List. */
+    @JvmStatic external fun registrableDomain(host: String): String?
+
     @JvmStatic external fun hiddenSelectors(classes: String, ids: String, exceptions: String): String
 }

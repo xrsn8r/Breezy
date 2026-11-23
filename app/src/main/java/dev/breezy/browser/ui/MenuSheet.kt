@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.SwipeVertical
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ButtonGroupDefaults
@@ -80,6 +81,7 @@ fun MenuSheet(
     onAddAsFilterList: () -> Unit,
     onFind: () -> Unit,
     onReader: () -> Unit,
+    onTranslate: () -> Unit,
     onTextSize: () -> Unit,
     onSpeed: () -> Unit,
     onNewPrivateTab: () -> Unit,
@@ -151,6 +153,15 @@ fun MenuSheet(
                 MenuGroup("Page", Icons.AutoMirrored.Rounded.Article, pageOpen, { pageOpen = it }) {
                     MenuRow(Icons.Rounded.Search, "Find in page", onClick = onFind)
                     MenuRow(Icons.AutoMirrored.Rounded.Article, "Reader mode", onClick = onReader)
+                    if (tab?.translatedFrom != null) {
+                        MenuRow(Icons.Rounded.Translate, "Show original",
+                            tab.translatedFrom?.takeIf { it != "…" }?.let { "Translated from " + dev.breezy.browser.data.Translator.displayName(it) },
+                            onClick = onTranslate)
+                    } else {
+                        MenuRow(Icons.Rounded.Translate, "Translate page",
+                            "To " + dev.breezy.browser.data.Translator.displayName(dev.breezy.browser.data.Translator.target(dev.breezy.browser.AppSettings.translateTo)),
+                            onClick = onTranslate)
+                    }
                     MenuRow(Icons.Rounded.FormatSize, "Text size", onClick = onTextSize)
                     if (tab.media.hasMedia) {
                         MenuRow(Icons.Rounded.Speed, "Playback speed", "${tab.playbackRate}×".replace(".0×", "×"), onClick = onSpeed)

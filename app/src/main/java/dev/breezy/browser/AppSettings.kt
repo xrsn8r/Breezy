@@ -75,6 +75,17 @@ object AppSettings {
     /** Global default text zoom (percent). */
     var textZoom by mutableIntStateOf(100); private set
     var pullToRefresh by mutableStateOf(true); private set
+    // --- Privacy signals & fingerprinting ---
+    var globalPrivacyControl by mutableStateOf(true); private set
+    var doNotTrack by mutableStateOf(false); private set
+    var farbling by mutableStateOf(true); private set
+    // --- SponsorBlock ---
+    var sponsorBlock by mutableStateOf(true); private set
+    var sponsorCategories by mutableStateOf(dev.breezy.browser.data.SponsorBlock.defaultCategories); private set
+    // --- Translation ---
+    /** Target language code, or "" for the device language. */
+    var translateTo by mutableStateOf(""); private set
+    var offerTranslate by mutableStateOf(true); private set
     // --- Appearance ---
     var themeMode by mutableStateOf(ThemeMode.System); private set
     var pureBlack by mutableStateOf(false); private set
@@ -116,6 +127,14 @@ object AppSettings {
         backgroundPlay = prefs.getBoolean("background_play", true)
         forceZoom = prefs.getBoolean("force_zoom", false)
         downloadConnections = prefs.getInt("download_connections", 4)
+        globalPrivacyControl = prefs.getBoolean("gpc", true)
+        doNotTrack = prefs.getBoolean("dnt", false)
+        farbling = prefs.getBoolean("farbling", true)
+        sponsorBlock = prefs.getBoolean("sponsorblock", true)
+        sponsorCategories = prefs.getStringSet("sponsor_categories", null)?.toSet()
+            ?: dev.breezy.browser.data.SponsorBlock.defaultCategories
+        translateTo = prefs.getString("translate_to", "")!!
+        offerTranslate = prefs.getBoolean("offer_translate", true)
         themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "System")!!) }.getOrDefault(ThemeMode.System)
         pureBlack = prefs.getBoolean("pure_black", false)
         dnsProvider = runCatching { dev.breezy.browser.data.DnsProvider.valueOf(prefs.getString("dns_provider", "Off")!!) }
@@ -183,6 +202,17 @@ object AppSettings {
     fun updateTextZoom(v: Int) { textZoom = v.coerceIn(50, 300); prefs.edit { putInt("text_zoom", textZoom) } }
     fun updatePullToRefresh(v: Boolean) { pullToRefresh = v; prefs.edit { putBoolean("pull_to_refresh", v) } }
     fun updateBackgroundPlay(v: Boolean) { backgroundPlay = v; prefs.edit { putBoolean("background_play", v) } }
+    fun updateGpc(v: Boolean) { globalPrivacyControl = v; prefs.edit { putBoolean("gpc", v) } }
+    fun updateDnt(v: Boolean) { doNotTrack = v; prefs.edit { putBoolean("dnt", v) } }
+    fun updateFarbling(v: Boolean) { farbling = v; prefs.edit { putBoolean("farbling", v) } }
+    fun updateSponsorBlock(v: Boolean) { sponsorBlock = v; prefs.edit { putBoolean("sponsorblock", v) } }
+    fun toggleSponsorCategory(id: String, on: Boolean) {
+        sponsorCategories = if (on) sponsorCategories + id else sponsorCategories - id
+        prefs.edit { putStringSet("sponsor_categories", sponsorCategories) }
+    }
+    fun updateTranslateTo(v: String) { translateTo = v; prefs.edit { putString("translate_to", v) } }
+    fun updateOfferTranslate(v: Boolean) { offerTranslate = v; prefs.edit { putBoolean("offer_translate", v) } }
+
     fun updateThemeMode(v: ThemeMode) { themeMode = v; prefs.edit { putString("theme_mode", v.name) } }
     fun updatePureBlack(v: Boolean) { pureBlack = v; prefs.edit { putBoolean("pure_black", v) } }
 

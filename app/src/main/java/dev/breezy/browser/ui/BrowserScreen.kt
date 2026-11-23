@@ -325,6 +325,10 @@ fun BrowserScreen(
                 }
             },
             onFind = { menuOpen = false; tab?.startFind() },
+            onTranslate = {
+                menuOpen = false
+                tab?.let { if (it.translatedFrom != null) it.showOriginal() else it.translate() }
+            },
             onReader = {
                 menuOpen = false
                 tab?.extractArticle { a ->
@@ -403,6 +407,27 @@ fun BrowserScreen(
             dev.breezy.browser.data.Updater.download(r)
             Toast.makeText(context, "Downloading Breezy ${r.version}…", Toast.LENGTH_SHORT).show()
         }, onDismiss = { updateNotes = null })
+    }
+
+    // Translation: offer when the page's language differs from yours; report errors.
+    val offer = tab?.translateOffer
+    LaunchedEffect(tab, offer) {
+        val t = tab ?: return@LaunchedEffect
+        val lang = offer ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar(
+            message = "Page is in ${dev.breezy.browser.data.Translator.displayName(lang)}",
+            actionLabel = "Translate",
+            withDismissAction = true,
+            duration = SnackbarDuration.Long,
+        )
+        if (result == SnackbarResult.ActionPerformed) t.translate() else t.declineTranslate()
+    }
+    val translateError = tab?.translateError
+    LaunchedEffect(translateError) {
+        if (translateError != null) {
+            Toast.makeText(context, "Couldn't translate: $translateError", Toast.LENGTH_SHORT).show()
+            tab?.translateError = null
+        }
     }
 
     val closed = tabs.recentlyClosed

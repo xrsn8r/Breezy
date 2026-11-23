@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -217,6 +218,9 @@ fun SettingsScreen(
                         },
                         colors = cardItemColors(),
                     )
+                    TranslateLanguageRow()
+                    ToggleRow("Offer to translate", "When a page is in another language. Translation sends the page's text to Google",
+                        AppSettings.offerTranslate, AppSettings::updateOfferTranslate)
                     ToggleRow("Pull to refresh", "Swipe down at the top of a page to reload it",
                         AppSettings.pullToRefresh, AppSettings::updatePullToRefresh)
                     ToggleRow("Force allow zoom", "Pinch-zoom on sites that try to disable it",
@@ -240,6 +244,10 @@ fun SettingsScreen(
                         AppSettings.httpsOnly, AppSettings::updateHttpsOnly)
                     ToggleRow("Strip tracking parameters", "Remove utm_*, fbclid, gclid and similar from links you open",
                         AppSettings.stripTracking, AppSettings::updateStripTracking)
+                    ToggleRow("Global Privacy Control", "Tell sites not to sell or share your data. Legally binding in some places",
+                        AppSettings.globalPrivacyControl, AppSettings::updateGpc)
+                    ToggleRow("Send Do Not Track", "An older request most sites ignore. Off by default because it makes you stand out",
+                        AppSettings.doNotTrack, AppSettings::updateDnt)
                     ToggleRow("Clear data on exit", "Wipe cookies, site data, history and tabs when you leave Breezy",
                         AppSettings.clearOnExit, AppSettings::updateClearOnExit)
                     ListItem(
@@ -281,6 +289,8 @@ fun SettingsScreen(
                         trailingContent = { Switch(checked = state.enabled, onCheckedChange = Shield::setEnabled) },
                         colors = cardItemColors(),
                     )
+                    ToggleRow("Fingerprinting protection", "Adds invisible noise to canvas, WebGL and audio, different for every site and session, so sites can't recognise this device",
+                        AppSettings.farbling, AppSettings::updateFarbling)
                     ToggleRow("Update lists automatically", "Weekly, on Wi-Fi",
                         AppSettings.autoUpdateLists, AppSettings::updateAutoUpdateLists)
                     if (state.allowlist.isNotEmpty()) {
@@ -406,6 +416,10 @@ fun SettingsScreen(
                     )
                     ToggleRow("Background play", "Keep audio and video playing with the screen off, with media controls",
                         AppSettings.backgroundPlay, AppSettings::updateBackgroundPlay)
+                    SubHeader("SponsorBlock")
+                    ToggleRow("Skip segments on YouTube", "Community-marked sponsors and more are skipped automatically, with Undo",
+                        AppSettings.sponsorBlock, AppSettings::updateSponsorBlock)
+                    if (AppSettings.sponsorBlock) SponsorCategories()
                     ListItem(
                         headlineContent = { Text("Picture-in-picture") },
                         supportingContent = { Text("Leave the app while a video is fullscreen to keep watching in a small window") },
@@ -638,6 +652,56 @@ private fun ToggleRow(title: String, summary: String, checked: Boolean, onChange
         trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
         colors = cardItemColors(),
     )
+}
+
+@Composable
+private fun SponsorCategories() {
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+    ) {
+        dev.breezy.browser.data.SponsorBlock.categories.forEach { (id, label) ->
+            val on = id in AppSettings.sponsorCategories
+            androidx.compose.material3.FilterChip(
+                selected = on,
+                onClick = { AppSettings.toggleSponsorCategory(id, !on) },
+                label = { Text(label) },
+                leadingIcon = if (on) {{ Icon(Icons.Rounded.Check, null, Modifier.size(18.dp)) }} else null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TranslateLanguageRow() {
+    var open by remember { mutableStateOf(false) }
+    val current = AppSettings.translateTo
+    val label = if (current.isBlank()) "Device language (" +
+        dev.breezy.browser.data.Translator.displayName(dev.breezy.browser.data.Translator.target("")) + ")"
+    else dev.breezy.browser.data.Translator.languages.firstOrNull { it.first == current }?.second ?: current
+    androidx.compose.foundation.layout.Box {
+        ListItem(
+            headlineContent = { Text("Translate to") },
+            supportingContent = { Text(label) },
+            colors = cardItemColors(),
+            modifier = Modifier.clickable { open = true },
+        )
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false },
+            modifier = Modifier.heightIn(max = 420.dp)) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Device language") },
+                onClick = { AppSettings.updateTranslateTo(""); open = false },
+                trailingIcon = if (current.isBlank()) {{ Icon(Icons.Rounded.Check, null) }} else null,
+            )
+            dev.breezy.browser.data.Translator.languages.forEach { (code, name) ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(name) },
+                    onClick = { AppSettings.updateTranslateTo(code); open = false },
+                    trailingIcon = if (current == code) {{ Icon(Icons.Rounded.Check, null) }} else null,
+                )
+            }
+        }
+    }
 }
 
 @Composable

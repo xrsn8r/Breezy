@@ -115,6 +115,45 @@ class BrowserTab(
         enum class Kind { Video, Audio, Hls }
     }
 
+    // --- Translation ---------------------------------------------------------------------------
+    /** Source language of the current translation ("…" while starting), or null when not translated. */
+    var translatedFrom by mutableStateOf<String?>(null)
+        private set
+    var translateError by mutableStateOf<String?>(null)
+    /** The page's declared language when it differs from the user's, to offer a translation. */
+    var translateOffer by mutableStateOf<String?>(null)
+        private set
+    private val declinedTranslations = HashSet<String>()
+
+    fun translate() {
+        translateOffer = null
+        translateError = null
+        translatedFrom = "…"
+        webView.evaluateJavascript(asset(webView.context, TRANSLATE), null)
+    }
+
+    fun showOriginal() {
+        translatedFrom = null
+        webView.evaluateJavascript("window.__breezyTranslate&&__breezyTranslate.restore()", null)
+    }
+
+    fun declineTranslate() {
+        translateOffer?.let { declinedTranslations += it.substringBefore('-').lowercase() }
+        translateOffer = null
+    }
+
+    private fun checkTranslateOffer() {
+        if (!AppSettings.offerTranslate || translatedFrom != null) return
+        if (!url.startsWith("http")) return
+        webView.evaluateJavascript("(document.documentElement.lang||'')") { raw ->
+            val lang = raw?.trim('"')?.trim().orEmpty()
+            val target = dev.breezy.browser.data.Translator.target(AppSettings.translateTo)
+            if (dev.breezy.browser.data.Translator.differs(lang, target) &&
+                lang.substringBefore('-').lowercase() !in declinedTranslations && translatedFrom == null
+            ) translateOffer = lang
+        }
+    }
+
     /** Media found on the current page, newest last. Reset on each top-level navigation. */
     val detectedMedia = androidx.compose.runtime.mutableStateListOf<DetectedMedia>()
 
@@ -229,7 +268,10 @@ class BrowserTab(
         runCatching { prepareScriptlets(target.toUri()) }
         applySiteSettings(runCatching { target.toUri().host }.getOrNull())
         httpsFailure = null
-        webView.loadUrl(target)
+        // Global Privacy Control as a header too, on navigations Breezy starts (WebView can't add
+        // headers to the page's own requests; pages also see navigator.globalPrivacyControl).
+        if (AppSettings.globalPrivacyControl) webView.loadUrl(target, mapOf("Sec-GPC" to "1"))
+        else webView.loadUrl(target)
     }
 
     // --- Navigation rewriting: HTTPS-only + tracking parameters ---------------------------------
@@ -351,6 +393,51 @@ class BrowserTab(
             .put("rate", playbackRate.toDouble())
             .toString()
 
+        /** Privacy signals and the farbling seed for a frame on [host] (null seed = no farbling). */
+        @JavascriptInterface
+        fun privacyConfig(host: String): String {
+            val o = org.json.JSONObject()
+                .put("gpc", AppSettings.globalPrivacyControl)
+                .put("dnt", AppSettings.doNotTrack)
+            // Shields down for the page also turns farbling off (it can break a site's canvas use).
+            if (AppSettings.farbling && Shield.activeFor(pageHost) && host.isNotEmpty()) {
+                val site = runCatching { NativeShield.registrableDomain(host) }.getOrNull() ?: host
+                val digest = java.security.MessageDigest.getInstance("SHA-256").run { update(farbleKey); digest(site.toByteArray()) }
+                o.put("seed", digest.take(4).joinToString("") { "%02x".format(it) })
+            }
+            return o.toString()
+        }
+
+        @JavascriptInterface
+        fun sponsorEnabled(): Boolean = AppSettings.sponsorBlock && AppSettings.sponsorCategories.isNotEmpty()
+
+        @JavascriptInterface
+        fun sponsorSegments(videoId: String) {
+            if (!Regex("[\\w-]{11}").matches(videoId)) return
+            appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val json = runCatching { dev.breezy.browser.data.SponsorBlock.segments(videoId) }.getOrNull() ?: return@launch
+                main.post {
+                    webView.evaluateJavascript("window.__breezySB&&__breezySB.segments('$videoId',$json)", null)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun translateBatch(id: Int, json: String) {
+            val texts = runCatching { org.json.JSONArray(json) }.getOrNull()?.let { a -> List(a.length()) { a.getString(it) } } ?: return
+            val target = dev.breezy.browser.data.Translator.target(AppSettings.translateTo)
+            appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val result = runCatching { dev.breezy.browser.data.Translator.translate(texts, target) }
+                main.post {
+                    result.onSuccess { r ->
+                        r.sourceLang?.let { if (translatedFrom == null || translatedFrom == "…") translatedFrom = it }
+                        val arr = org.json.JSONArray(r.texts).toString()
+                        webView.evaluateJavascript("window.__breezyTranslate&&__breezyTranslate.apply($id,$arr)", null)
+                    }.onFailure { translateError = it.message ?: "network error" }
+                }
+            }
+        }
+
         /** `[{"src": "...", "tag": "video"|"audio"}, ...]` from page.js; "stream" = MediaSource only. */
         @JavascriptInterface
         fun mediaSources(json: String) {
@@ -470,7 +557,7 @@ class BrowserTab(
             // Record the navigation target first so subresources get the right source URL.
             setPage(urlString)
             pendingBlocked.set(0)
-            main.post { blockedCount = 0; detectedMedia.clear(); streamOnlyMedia = false }
+            main.post { blockedCount = 0; detectedMedia.clear(); streamOnlyMedia = false; translatedFrom = null; translateOffer = null }
             return null // never block top-level navigations
         }
         if (!Shield.activeFor(pageHost)) { sniffMedia(urlString, request.requestHeaders); return null }
@@ -623,6 +710,7 @@ class BrowserTab(
             loading = false
             progress = 1f
             updateNav()
+            checkTranslateOffer()
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
@@ -1028,6 +1116,12 @@ class BrowserTab(
 
         val multiProfileSupported: Boolean by lazy { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }
         private const val COSMETIC = "adblock/cosmetic.js"
+        private const val PRIVACY = "breezy/privacy.js"
+        private const val SPONSORBLOCK = "breezy/sponsorblock.js"
+        private const val TRANSLATE = "breezy/translate.js"
+        private val YOUTUBE_ORIGINS = setOf("https://www.youtube.com", "https://m.youtube.com", "https://youtube.com")
+        /** Per-process key for farbling: fingerprints change every app session. */
+        private val farbleKey = java.security.SecureRandom().let { r -> ByteArray(16).also(r::nextBytes) }
         private const val SCROLL_REPAIR = "breezy/scroll-repair.js"
         private const val FORCE_UNLOCK = "breezy/force-unlock.js"
         private const val DIAGNOSTICS = "breezy/diagnostics.js"
@@ -1076,6 +1170,9 @@ class BrowserTab(
 
         private fun installCosmeticScript(webView: WebView) {
             if (documentStartScriptSupported) {
+                // Privacy signals and farbling first, before any page script can read the APIs.
+                WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, PRIVACY), setOf("*"))
+                WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, SPONSORBLOCK), YOUTUBE_ORIGINS)
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, SCROLL_REPAIR), setOf("*"))
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, PAGE), setOf("*"))
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, COSMETIC), setOf("*"))

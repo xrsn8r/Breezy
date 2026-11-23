@@ -2,6 +2,19 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.9.0
+- **SponsorBlock for YouTube**: sponsors, self-promotion and subscribe reminders are skipped
+  automatically, with **Undo**. Choose categories (intros, outros, previews, filler...) in
+  Settings → Downloads & media. Lookups are anonymous: YouTube video ids are never sent.
+- **Translate pages**: Menu → **Translate page** translates in place, including content that
+  loads later, and **Show original** switches back. Breezy offers it when a page is in another
+  language. Choose the language in Settings → Search & browsing.
+- **Fingerprinting protection** (Shields): canvas, WebGL and audio get invisible noise that's
+  different for every site and every session, so sites can't recognise your device. Off when
+  Shields are down for a site.
+- **Global Privacy Control**: tells sites not to sell or share your data (on by default), plus an
+  optional Do Not Track signal. Settings → Privacy & security.
+
 ## 0.8.1
 - **What's new in updates**: release pages list the changes in each version, and Breezy's update
   prompt shows them before you install.

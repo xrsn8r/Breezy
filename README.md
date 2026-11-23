@@ -50,6 +50,14 @@ shield sheet recompiles on-device and caches the result.
     endpoint, with an optional strict mode. WebView can't take a custom resolver, so Breezy runs a
     small proxy on `127.0.0.1` that resolves hostnames over DoH and tunnels connections unchanged
     (TLS stays end to end). Breezy's own downloads and list updates use it too.
+- **SponsorBlock**: skips community-marked segments on YouTube (choose categories), with Undo.
+  Uses the hash-prefix API, so the video id never leaves the device.
+- **Translate page**: in place, through Google Translate, with Show original; offered when a
+  page's language differs from yours.
+- **Fingerprinting protection**: Brave-style farbling of canvas, WebGL readPixels, audio and
+  `hardwareConcurrency`, seeded per site (eTLD+1, via the bundled PSL) and per app session.
+- **Global Privacy Control** (`navigator.globalPrivacyControl`, and `Sec-GPC` on navigations Breezy
+  starts) and optional Do Not Track.
 - **Download manager**: downloads split into up to 8 parallel connections (HTTP range requests),
   with pause, resume (also after a restart), retry and share. When a server rate-limits (HTTP 429/503)
   every connection to it waits out the server's Retry-After, and stream downloads drop to fewer

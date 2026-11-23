@@ -214,8 +214,8 @@ android {
         applicationId = "dev.breezy.browser"
         minSdk = minSdkVersion
         targetSdk = 36
-        versionCode = 23
-        versionName = "0.8.1"
+        versionCode = 24
+        versionName = "0.9.0"
     }
 
     // Optional release signing from the environment (CI secrets); falls back to the debug key.
@@ -312,4 +312,5 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303") // real org.json for JVM tests (Android's is a stub)
 }

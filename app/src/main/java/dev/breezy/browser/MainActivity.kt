@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity(), TabHost {
             }
         }
 
-        if (AppSettings.nativePageHost) {
+        run {
             // The current tab's WebView lives directly in the window, beneath a transparent Compose
             // overlay, so it composites like in any other browser (not through Compose layers).
             val root = FrameLayout(this)
@@ -111,8 +111,6 @@ class MainActivity : ComponentActivity(), TabHost {
             lifecycleScope.launch {
                 snapshotFlow { tabs.current?.loading == true }.collect { loading -> if (!loading) refresh.isRefreshing = false }
             }
-        } else {
-            setContentView(ui)
         }
     }
 
@@ -126,12 +124,6 @@ class MainActivity : ComponentActivity(), TabHost {
             (view.parent as? ViewGroup)?.removeView(view)
             webHost.addView(view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
-    }
-
-    /** Switch page hosting mode (Settings → Troubleshooting); tabs are saved and restored. */
-    fun restartForHostChange() {
-        tabs.save()
-        recreate()
     }
 
     override fun onNewIntent(intent: Intent) {

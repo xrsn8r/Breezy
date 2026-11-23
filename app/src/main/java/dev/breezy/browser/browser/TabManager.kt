@@ -46,17 +46,6 @@ class TabManager(private val context: Context, private val host: TabHost) {
         tab.onResume()
     }
 
-    fun close(tab: BrowserTab) {
-        val index = tabs.indexOf(tab)
-        if (index < 0) return
-        tabs.removeAt(index)
-        if (current === tab) {
-            current = null
-            tabs.getOrNull(index.coerceAtMost(tabs.size - 1))?.let { select(it) }
-        }
-        tab.destroy()
-    }
-
     /** Close [tab] but keep it for a few seconds so it can be restored with [undoClose]. */
     fun closeWithUndo(tab: BrowserTab) {
         val index = tabs.indexOf(tab)

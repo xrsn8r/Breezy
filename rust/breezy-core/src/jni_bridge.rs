@@ -6,7 +6,7 @@
 
 use jni::JNIEnv;
 use jni::objects::{JBooleanArray, JByteArray, JClass, JObjectArray, JString};
-use jni::sys::{jboolean, jbyteArray, jint, jstring, JNI_FALSE, JNI_TRUE};
+use jni::sys::{JNI_FALSE, JNI_TRUE, jboolean, jbyteArray, jint, jstring};
 
 use crate::Decision;
 
@@ -18,7 +18,9 @@ fn jstr(env: &mut JNIEnv, s: &JString) -> Option<String> {
 }
 
 fn new_jstring(env: &mut JNIEnv, s: &str) -> jstring {
-    env.new_string(s).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+    env.new_string(s)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 fn bool_j(b: bool) -> jboolean {
@@ -53,7 +55,12 @@ pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_compileLists
         let n = env.get_array_length(&trusted).unwrap_or(0) as usize;
         let _ = env.get_boolean_array_region(&trusted, 0, &mut flags[..n.min(texts.len())]);
     }
-    crate::load_lists_trusted(texts.iter().zip(flags).map(|(t, f)| (t.as_str(), f == JNI_TRUE)));
+    crate::load_lists_trusted(
+        texts
+            .iter()
+            .zip(flags)
+            .map(|(t, f)| (t.as_str(), f == JNI_TRUE)),
+    );
     JNI_TRUE
 }
 
@@ -105,7 +112,10 @@ pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_loadResource
     let Ok(raw) = env.convert_byte_array(&json) else {
         return -1;
     };
-    match std::str::from_utf8(&raw).map_err(|e| e.to_string()).and_then(crate::load_resources) {
+    match std::str::from_utf8(&raw)
+        .map_err(|e| e.to_string())
+        .and_then(crate::load_resources)
+    {
         Ok(n) => n as jint,
         Err(_) => -1,
     }
@@ -147,16 +157,29 @@ pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_check(
     }
 }
 
-/// `cosmeticResources(url: String): String` (JSON)
+/// `cosmeticResources(url: String, includeScript: Boolean): String` (JSON)
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_cosmeticResources(
     mut env: JNIEnv,
     _class: JClass,
     url: JString,
+    include_script: jboolean,
 ) -> jstring {
     let url = jstr(&mut env, &url).unwrap_or_default();
-    let json = crate::cosmetic_resources_json(&url);
+    let json = crate::cosmetic_resources_json(&url, include_script == JNI_TRUE);
     new_jstring(&mut env, &json)
+}
+
+/// `scriptlets(url: String): String`: the page's scriptlet bundle (may be empty).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_breezy_browser_adblock_NativeShield_scriptlets(
+    mut env: JNIEnv,
+    _class: JClass,
+    url: JString,
+) -> jstring {
+    let url = jstr(&mut env, &url).unwrap_or_default();
+    let script = crate::scriptlets(&url);
+    new_jstring(&mut env, &script)
 }
 
 /// `hiddenSelectors(classesJson: String, idsJson: String, exceptionsJson: String): String` (JSON array)

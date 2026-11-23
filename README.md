@@ -8,6 +8,7 @@ A fast Android WebView browser with **Brave's adblock-rust engine built into its
 ```
 rust/breezy-core          Rust cdylib (libbreezy_core.so)
  ├─ lib.rs                thread-safe wrapper around adblock::Engine (global Arc, hot-swappable)
+ ├─ psl.rs                compact Public Suffix List resolver (replaces adblock-rust's embedded one)
  ├─ request_type.rs       infers script/image/xhr/... from URL + Accept (WebView doesn't expose it)
  ├─ jni_bridge.rs         JNI entry points for dev.breezy.browser.adblock.NativeShield
  └─ bin/compile.rs        host tool: filter lists -> serialized engine.dat (used by Gradle)
@@ -102,6 +103,21 @@ Store). Breezy additionally:
 - Only allows WebView remote debugging in debug builds.
 - Presents itself as mobile Chrome (no WebView `wv` token, no `X-Requested-With` header) so Google
   sign-in works and sites don't serve WebView-specific behaviour.
+
+## Size and performance
+
+- **Rust library: 2.35 MB (was 3.12 MB).** adblock-rust's `embedded-domain-resolver` compiled the
+  Public Suffix List into about 650 KiB of code. `psl.rs` embeds the list as text, parsed into hash
+  sets on first use. `tests/psl_compat.rs` checks it against the original on every host in the
+  filter lists (about 100k hosts, 0 mismatches). It's also slightly faster.
+- `opt-level = 3`, fat LTO, `codegen-units = 1`, `panic = "abort"`. `opt-level = "s"` would save
+  only another 6% of size, at about 27% slower request checks.
+- Scriptlets are fetched with a dedicated native call that returns just the script, with no JSON.
+  When scriptlets are already injected natively, the page's cosmetic request leaves the script out.
+- The cosmetic filtering script only examines newly added elements, not every class change, and
+  batches its work into idle time.
+- Only the visible tab pre-renders offscreen tiles. Library license and metadata files are left out
+  of the APK. R8 strips debug logging.
 
 ## Building
 

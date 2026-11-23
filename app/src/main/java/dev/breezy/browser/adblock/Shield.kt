@@ -320,8 +320,6 @@ object Shield {
     /** Whether shields apply on this host (global toggle and per-site allowlist). */
     fun activeFor(host: String?): Boolean = ready && enabled && (host == null || host !in allowlist)
 
-    fun allowlistedSites(): Set<String> = allowlist
-
     fun setSiteAllowed(host: String, allowed: Boolean) {
         allowlist = if (allowed) allowlist + host else allowlist - host
         generation++

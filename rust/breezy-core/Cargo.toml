@@ -21,11 +21,14 @@ path = "src/bin/resources.rs"
 [dependencies]
 # Disable `single-thread` so Engine is Send + Sync: WebView calls
 # shouldInterceptRequest from a pool of IO threads concurrently.
-adblock = { version = "0.13.6", default-features = false, features = [
-    "embedded-domain-resolver",
-    "full-regex-handling",
-] }
+# No `embedded-domain-resolver`: it compiles the Public Suffix List into ~650 KiB of code.
+# src/psl.rs provides a compact resolver instead.
+adblock = { version = "0.13.6", default-features = false, features = ["full-regex-handling"] }
 serde_json = "1"
 jni = { version = "0.21.1", default-features = false }
 base64 = "0.22"
 
+
+[dev-dependencies]
+# Reference implementation (what embedded-domain-resolver used) to check src/psl.rs against.
+addr = "0.15"

@@ -67,14 +67,6 @@ object AppSettings {
     var frostedToolbar by mutableStateOf(false)
         private set
 
-    /**
-     * Host the WebView directly in the window (beneath a transparent Compose overlay) instead of
-     * inside Compose's drawing via AndroidView. Drawing WebView through Compose layers can break
-     * CSS effects like backdrop-filter (blank X login, half-drawn dialogs). Applies on restart.
-     */
-    var nativePageHost by mutableStateOf(true)
-        private set
-
     // --- Privacy / browsing ---
     var httpsOnly by mutableStateOf(true); private set
     var stripTracking by mutableStateOf(true); private set
@@ -104,7 +96,6 @@ object AppSettings {
         forceDarkAllSites = prefs.getBoolean("force_dark_all_sites", false)
         frostedToolbar = prefs.getBoolean("frosted_toolbar", false)
         identifyAsChrome = prefs.getBoolean("identify_as_chrome", true)
-        nativePageHost = prefs.getBoolean("native_page_host", true)
         httpsOnly = prefs.getBoolean("https_only", true)
         stripTracking = prefs.getBoolean("strip_tracking", true)
         clearOnExit = prefs.getBoolean("clear_on_exit", false)
@@ -174,11 +165,6 @@ object AppSettings {
     fun updatePullToRefresh(v: Boolean) { pullToRefresh = v; prefs.edit { putBoolean("pull_to_refresh", v) } }
     fun updateBackgroundPlay(v: Boolean) { backgroundPlay = v; prefs.edit { putBoolean("background_play", v) } }
     fun updateForceZoom(v: Boolean) { forceZoom = v; prefs.edit { putBoolean("force_zoom", v) } }
-
-    fun updateNativePageHost(value: Boolean) {
-        nativePageHost = value
-        prefs.edit { putBoolean("native_page_host", value) }
-    }
 
     fun updateIdentifyAsChrome(value: Boolean) {
         identifyAsChrome = value

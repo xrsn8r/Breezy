@@ -8,7 +8,6 @@ version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d0e54f8c5fda98d15b910f3d787a6290cbdf5448b6318ce4fcaa39ff8ce2b0c"
 dependencies = [
- "addr",
  "arrayvec",
  "base64 0.23.1",
  "bitflags",
@@ -76,6 +75,7 @@ name = "breezy-core"
 version = "0.1.0"
 dependencies = [
  "adblock",
+ "addr",
  "base64 0.22.1",
  "jni",
  "serde_json",

@@ -103,15 +103,17 @@
   function schedule() {
     if (pending) return;
     pending = true;
-    setTimeout(flush, 50);
+    // Batch DOM churn; run when the main thread is idle (but within 150 ms).
+    if (window.requestIdleCallback) requestIdleCallback(flush, { timeout: 150 });
+    else setTimeout(flush, 50);
   }
 
   var observer = new MutationObserver(function (mutations) {
     for (var m = 0; m < mutations.length; m++) {
       var mu = mutations[m];
-      if (mu.type === 'attributes') collect(mu.target);
-      else for (var n = 0; n < mu.addedNodes.length; n++) {
+      for (var n = 0; n < mu.addedNodes.length; n++) {
         var node = mu.addedNodes[n];
+        if (node.nodeType !== 1) continue;
         if (!res.generichide) collectTree(node);
         if (procedural.length && node.nodeType === 1) applyProcedural(node.parentNode || node);
       }
@@ -121,7 +123,8 @@
 
   // Observe from document start so elements are handled as the parser inserts them.
   var opts = { childList: true, subtree: true };
-  if (!res.generichide) { opts.attributes = true; opts.attributeFilter = ['class', 'id']; }
+  // Only newly added elements are examined (as uBlock Origin does). Watching every class/id
+  // attribute change is expensive on single-page apps that restyle constantly.
   // At document start <html> may not exist yet, so observe the document node itself.
   if (!res.generichide) { collectTree(document.documentElement); flush(); }
   if (procedural.length) applyProcedural(document);

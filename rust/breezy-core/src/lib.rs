@@ -11,16 +11,17 @@
 //! * Engines are compiled once (at build time on the host, or on-device after a list update)
 //!   and then loaded from the compact serialized form, which takes a few milliseconds.
 
-pub mod request_type;
 mod jni_bridge;
+pub mod psl;
+pub mod request_type;
 
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
+use adblock::Engine;
 use adblock::lists::{FilterSet, ParseOptions};
 use adblock::request::Request;
 use adblock::resources::{PermissionMask, Resource};
-use adblock::Engine;
 
 /// What the browser should do with a network request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +37,7 @@ pub enum Decision {
 static ENGINE: RwLock<Option<Arc<Engine>>> = RwLock::new(None);
 
 fn current() -> Option<Arc<Engine>> {
+    psl::install();
     ENGINE.read().ok().and_then(|g| g.clone())
 }
 
@@ -59,6 +61,7 @@ pub const TRUSTED_PERMISSION: u8 = 1;
 
 /// Like [`compile_lists`], with a per-list trusted flag.
 pub fn compile_lists_trusted<'a>(lists: impl IntoIterator<Item = (&'a str, bool)>) -> Engine {
+    psl::install();
     let mut set = FilterSet::new(false);
     for (list, trusted) in lists {
         let opts = ParseOptions {
@@ -83,6 +86,7 @@ pub fn load_lists_trusted<'a>(lists: impl IntoIterator<Item = (&'a str, bool)>) 
 /// Install an engine from bytes produced by [`Engine::serialize`]. Returns false if the data is
 /// corrupt or from an incompatible version (the caller should then fall back to compiling lists).
 pub fn load_serialized(bytes: &[u8]) -> bool {
+    psl::install();
     let mut engine = Engine::default();
     if engine.deserialize(bytes).is_err() {
         return false;
@@ -96,7 +100,9 @@ pub fn load_serialized(bytes: &[u8]) -> bool {
 /// Like [`load_serialized`] but reads the file natively, avoiding a multi-megabyte copy through
 /// the Java heap on every launch.
 pub fn load_serialized_file(path: &str) -> bool {
-    std::fs::read(path).map(|b| load_serialized(&b)).unwrap_or(false)
+    std::fs::read(path)
+        .map(|b| load_serialized(&b))
+        .unwrap_or(false)
 }
 
 /// Serialize the current engine for fast reloading. Empty if no engine is loaded.
@@ -109,7 +115,9 @@ pub fn serialize_current() -> Vec<u8> {
 pub fn load_resources(json: &str) -> Result<usize, String> {
     let resources: Vec<Resource> = serde_json::from_str(json).map_err(|e| e.to_string())?;
     let count = resources.len();
-    let mut guard = ENGINE.write().map_err(|_| "engine lock poisoned".to_string())?;
+    let mut guard = ENGINE
+        .write()
+        .map_err(|_| "engine lock poisoned".to_string())?;
     let Some(arc) = guard.as_mut() else {
         return Err("no engine loaded".into());
     };
@@ -156,11 +164,24 @@ pub fn check(url: &str, source_url: &str, request_type: &str, method: &str) -> D
 
 /// Cosmetic resources for a page as JSON:
 /// `{hide_selectors, procedural_actions, exceptions, injected_script, generichide}`.
-pub fn cosmetic_resources_json(url: &str) -> String {
+/// With `include_script = false` the (often large) scriptlet bundle is left out, for pages whose
+/// scriptlets are already injected natively.
+pub fn cosmetic_resources_json(url: &str, include_script: bool) -> String {
     let Some(engine) = current() else {
         return "{}".into();
     };
-    serde_json::to_string(&engine.url_cosmetic_resources(url)).unwrap_or_else(|_| "{}".into())
+    let mut res = engine.url_cosmetic_resources(url);
+    if !include_script {
+        res.injected_script.clear();
+    }
+    serde_json::to_string(&res).unwrap_or_else(|_| "{}".into())
+}
+
+/// Just the scriptlet bundle (`##+js(...)` code) for a page, without building any JSON.
+pub fn scriptlets(url: &str) -> String {
+    current()
+        .map(|e| e.url_cosmetic_resources(url).injected_script)
+        .unwrap_or_default()
 }
 
 /// Generic hide selectors matching the given classes / ids seen in the DOM (JSON arrays of
@@ -198,18 +219,32 @@ example.org##.ad-banner
         let _g = LOCK.lock().unwrap();
         load_lists([LIST]);
         let page = "https://news.example.net/";
-        assert_eq!(check("https://ads.example.com/x.js", page, "script", "GET"), Decision::Block);
+        assert_eq!(
+            check("https://ads.example.com/x.js", page, "script", "GET"),
+            Decision::Block
+        );
         assert_eq!(
             check("https://ads.example.com/allowed.js", page, "script", "GET"),
             Decision::Allow
         );
-        assert_eq!(check("https://cdn.example.net/app.js", page, "script", "GET"), Decision::Allow);
-        // $third-party: first-party load is fine.
         assert_eq!(
-            check("https://tracker.test/p.gif", "https://tracker.test/", "image", "GET"),
+            check("https://cdn.example.net/app.js", page, "script", "GET"),
             Decision::Allow
         );
-        assert_eq!(check("https://tracker.test/p.gif", page, "image", "GET"), Decision::Block);
+        // $third-party: first-party load is fine.
+        assert_eq!(
+            check(
+                "https://tracker.test/p.gif",
+                "https://tracker.test/",
+                "image",
+                "GET"
+            ),
+            Decision::Allow
+        );
+        assert_eq!(
+            check("https://tracker.test/p.gif", page, "image", "GET"),
+            Decision::Block
+        );
     }
 
     #[test]
@@ -225,7 +260,12 @@ example.org##.ad-banner
         assert!(load_serialized_file(path.to_str().unwrap()));
         assert!(!load_serialized_file("/nonexistent/engine.dat"));
         assert_eq!(
-            check("https://ads.example.com/x.js", "https://a.test/", "script", "GET"),
+            check(
+                "https://ads.example.com/x.js",
+                "https://a.test/",
+                "script",
+                "GET"
+            ),
             Decision::Block
         );
     }
@@ -234,7 +274,7 @@ example.org##.ad-banner
     fn cosmetics() {
         let _g = LOCK.lock().unwrap();
         load_lists([LIST]);
-        let json = cosmetic_resources_json("https://example.org/page");
+        let json = cosmetic_resources_json("https://example.org/page", true);
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         let hides: Vec<&str> = v["hide_selectors"]
             .as_array()
@@ -254,10 +294,11 @@ example.org##.ad-banner
         let res = r#"[{"name":"trusted-thing.js","aliases":[],"kind":{"mime":"application/javascript"},"content":"ZnVuY3Rpb24gdHJ1c3RlZFRoaW5nKCkge30=","permission":1}]"#;
         load_lists_trusted([(rule, false)]);
         load_resources(res).unwrap();
-        assert!(!cosmetic_resources_json("https://site.test/").contains("trustedThing"));
+        assert!(!scriptlets("https://site.test/").contains("trustedThing"));
         load_lists_trusted([(rule, true)]);
         load_resources(res).unwrap();
-        assert!(cosmetic_resources_json("https://site.test/").contains("trustedThing"));
+        assert!(scriptlets("https://site.test/").contains("trustedThing"));
+        assert!(!cosmetic_resources_json("https://site.test/", false).contains("trustedThing"));
     }
 
     #[test]
@@ -266,8 +307,15 @@ example.org##.ad-banner
         load_lists(["||analytics.test/ga.js$script,redirect=noop.js"]);
         let resources = r#"[{"name":"noop.js","aliases":[],"kind":{"mime":"application/javascript"},"content":"KGZ1bmN0aW9uKCl7fSkoKTs="}]"#;
         assert_eq!(load_resources(resources), Ok(1));
-        match check("https://analytics.test/ga.js", "https://site.test/", "script", "GET") {
-            Decision::Redirect(url) => assert!(url.starts_with("data:application/javascript;base64,")),
+        match check(
+            "https://analytics.test/ga.js",
+            "https://site.test/",
+            "script",
+            "GET",
+        ) {
+            Decision::Redirect(url) => {
+                assert!(url.starts_with("data:application/javascript;base64,"))
+            }
             other => panic!("expected redirect, got {other:?}"),
         }
     }

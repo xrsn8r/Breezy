@@ -2,6 +2,9 @@ package dev.breezy.browser.ui
 
 import android.text.format.Formatter
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -354,6 +357,31 @@ private fun PermissionRow(label: String, value: SitePermission, onPick: (SitePer
                     ) { Text(p.name, style = MaterialTheme.typography.labelMedium) }
                 }
             }
+        },
+    )
+}
+
+// --- Page diagnostics -------------------------------------------------------------------------------
+
+@Composable
+fun DiagnosticsDialog(report: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Page diagnostics") },
+        text = {
+            Text(
+                report,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            )
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            TextButton(onClick = {
+                context.getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Breezy diagnostics", report))
+            }) { Text("Copy") }
         },
     )
 }

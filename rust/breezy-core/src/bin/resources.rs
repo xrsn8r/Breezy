@@ -75,7 +75,9 @@ fn build(ubo: &Path, brave: &str) -> Result<(Vec<Value>, String), String> {
     }
 
     if scriptlet_count < 120 {
-        return Err(format!("only {scriptlet_count} scriptlets found; uBO layout changed?"));
+        return Err(format!(
+            "only {scriptlet_count} scriptlets found; uBO layout changed?"
+        ));
     }
     let stats = format!(
         "{} resources ({brave_count} Brave, {scriptlet_count} uBO scriptlets, {redirect_count} redirects)",
@@ -98,7 +100,11 @@ fn extract_scriptlets(dir: &Path) -> Result<Vec<Value>, String> {
     for file in &files {
         let src = fs::read_to_string(file).unwrap_or_default();
         for line in src.lines() {
-            if let Some(p) = line.split("from '../").nth(1).and_then(|r| r.split('\'').next()) {
+            if let Some(p) = line
+                .split("from '../")
+                .nth(1)
+                .and_then(|r| r.split('\'').next())
+            {
                 let path = dir.join("..").join(p);
                 if path.is_file() && !extra.contains(&path) {
                     extra.push(path);
@@ -129,8 +135,12 @@ fn extract_scriptlets(dir: &Path) -> Result<Vec<Value>, String> {
 
     let mut out = Vec::new();
     for (fn_arg, obj) in registrations {
-        let Some(name) = capture_str(&obj, "name") else { continue };
-        let Some(fn_name) = fn_arg.or_else(|| capture_ident(&obj, "fn")) else { continue };
+        let Some(name) = capture_str(&obj, "name") else {
+            continue;
+        };
+        let Some(fn_name) = fn_arg.or_else(|| capture_ident(&obj, "fn")) else {
+            continue;
+        };
         let Some(body) = functions.get(&fn_name) else {
             eprintln!("breezy-resources: warning: {name}: function {fn_name} not found");
             continue;
@@ -144,9 +154,16 @@ fn extract_scriptlets(dir: &Path) -> Result<Vec<Value>, String> {
             .collect();
         let aliases: Vec<String> = capture_list(&obj, "aliases")
             .into_iter()
-            .filter_map(|d| if let ListItem::Str(s) = d { Some(s) } else { None })
+            .filter_map(|d| {
+                if let ListItem::Str(s) = d {
+                    Some(s)
+                } else {
+                    None
+                }
+            })
             .collect();
-        let requires_trust = obj.contains("requiresTrust: true") || obj.contains("requiresTrust:true");
+        let requires_trust =
+            obj.contains("requiresTrust: true") || obj.contains("requiresTrust:true");
         let mut r = json!({
             "name": name,
             "aliases": aliases,
@@ -184,16 +201,24 @@ fn find_functions(src: &str, spans: &[(usize, usize)]) -> Vec<(String, String)> 
             // Must be a declaration: at line start, or after `export`, `;` or `}`.
             let before = src[..start].trim_end_matches([' ', '\t']);
             let before_trim = before.trim_end();
-            if !(before.is_empty() || before.ends_with('\n') || before_trim.ends_with("export")
-                || before_trim.ends_with(';') || before_trim.ends_with('}'))
+            if !(before.is_empty()
+                || before.ends_with('\n')
+                || before_trim.ends_with("export")
+                || before_trim.ends_with(';')
+                || before_trim.ends_with('}'))
             {
                 continue;
             }
-            let name: String = src[i..].chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$').collect();
+            let name: String = src[i..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+                .collect();
             if name.is_empty() {
                 continue;
             }
-            let Some(end) = declaration_end(src, spans, i, kw == "class ") else { continue };
+            let Some(end) = declaration_end(src, spans, i, kw == "class ") else {
+                continue;
+            };
             out.push((name, src[start..=end].to_owned()));
             i = end + 1;
         }
@@ -223,7 +248,11 @@ fn declaration_end(src: &str, spans: &[(usize, usize)], from: usize, class: bool
 fn find_registrations(src: &str, spans: &[(usize, usize)]) -> Vec<(Option<String>, String)> {
     let mut out = Vec::new();
     let bytes = src.as_bytes();
-    for needle in ["registerScriptlet(", "registeredScriptlets.push(", "builtinScriptlets.push("] {
+    for needle in [
+        "registerScriptlet(",
+        "registeredScriptlets.push(",
+        "builtinScriptlets.push(",
+    ] {
         let mut i = 0;
         while let Some(pos) = src[i..].find(needle) {
             let call = i + pos;
@@ -233,17 +262,26 @@ fn find_registrations(src: &str, spans: &[(usize, usize)]) -> Vec<(Option<String
                 continue;
             }
             // Skip the definition `const registerScriptlet = (fn, details) =>`.
-            if src[..call].trim_end().ends_with("const") || src[..call].trim_end().ends_with("function") {
+            if src[..call].trim_end().ends_with("const")
+                || src[..call].trim_end().ends_with("function")
+            {
                 continue;
             }
-            let Some(brace) = src[start..].find('{').map(|p| p + start) else { continue };
+            let Some(brace) = src[start..].find('{').map(|p| p + start) else {
+                continue;
+            };
             let head = src[start..brace].trim().trim_end_matches(',').trim();
-            let fn_arg = (!head.is_empty() && head.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$'))
-                .then(|| head.to_owned());
+            let fn_arg = (!head.is_empty()
+                && head
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '$'))
+            .then(|| head.to_owned());
             if !head.is_empty() && fn_arg.is_none() {
                 continue;
             }
-            let Some(end) = match_delim(bytes, spans, brace, b'{', b'}') else { continue };
+            let Some(end) = match_delim(bytes, spans, brace, b'{', b'}') else {
+                continue;
+            };
             out.push((fn_arg, src[brace..=end].to_owned()));
             i = end;
         }
@@ -257,12 +295,16 @@ enum ListItem {
 }
 
 fn capture_list(obj: &str, key: &str) -> Vec<ListItem> {
-    let Some(at) = find_key(obj, key) else { return vec![] };
+    let Some(at) = find_key(obj, key) else {
+        return vec![];
+    };
     let rest = obj[at..].trim_start();
     if !rest.starts_with('[') {
         return vec![];
     }
-    let Some(end) = rest.find(']') else { return vec![] };
+    let Some(end) = rest.find(']') else {
+        return vec![];
+    };
     rest[1..end]
         .split(',')
         .map(str::trim)
@@ -290,18 +332,25 @@ fn capture_str(obj: &str, key: &str) -> Option<String> {
 
 fn capture_ident(obj: &str, key: &str) -> Option<String> {
     let at = find_key(obj, key)?;
-    let ident: String = obj[at..].trim_start().chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$').collect();
+    let ident: String = obj[at..]
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+        .collect();
     (!ident.is_empty()).then_some(ident)
 }
 
 fn capture_str_list(obj: &str, key: &str) -> Vec<String> {
-    let Some(at) = find_key(obj, key) else { return vec![] };
+    let Some(at) = find_key(obj, key) else {
+        return vec![];
+    };
     let rest = obj[at..].trim_start();
     if !rest.starts_with('[') {
         return vec![];
     }
-    let Some(end) = rest.find(']') else { return vec![] };
+    let Some(end) = rest.find(']') else {
+        return vec![];
+    };
     rest[1..end]
         .split(',')
         .map(|s| s.trim().trim_matches(|c| c == '\'' || c == '"').to_owned())
@@ -330,7 +379,8 @@ fn find_key(obj: &str, key: &str) -> Option<usize> {
 fn extract_redirects(ubo: &Path) -> Result<Vec<Value>, String> {
     let map_path = ubo.join("src/js/redirect-resources.js");
     let war = ubo.join("src/web_accessible_resources");
-    let src = fs::read_to_string(&map_path).map_err(|e| format!("read {}: {e}", map_path.display()))?;
+    let src =
+        fs::read_to_string(&map_path).map_err(|e| format!("read {}: {e}", map_path.display()))?;
     let spans = Lexer::new(&src).code_spans();
     let bytes = src.as_bytes();
     let mut out = Vec::new();
@@ -342,15 +392,26 @@ fn extract_redirects(ubo: &Path) -> Result<Vec<Value>, String> {
         if !in_code(&spans, start) {
             continue;
         }
-        let Some(name_end) = src[i..].find('\'') else { break };
+        let Some(name_end) = src[i..].find('\'') else {
+            break;
+        };
         let name = &src[i..i + name_end];
         let after = &src[i + name_end + 1..];
-        let Some(brace_rel) = after.find('{') else { continue };
-        if !after[..brace_rel].trim().trim_start_matches(',').trim().is_empty() {
+        let Some(brace_rel) = after.find('{') else {
+            continue;
+        };
+        if !after[..brace_rel]
+            .trim()
+            .trim_start_matches(',')
+            .trim()
+            .is_empty()
+        {
             continue;
         }
         let brace = i + name_end + 1 + brace_rel;
-        let Some(end) = match_delim(bytes, &spans, brace, b'{', b'}') else { continue };
+        let Some(end) = match_delim(bytes, &spans, brace, b'{', b'}') else {
+            continue;
+        };
         let props = &src[brace..=end];
         i = end;
         // Templated resources (with `params`) need runtime substitution adblock-rust can't do.
@@ -358,12 +419,14 @@ fn extract_redirects(ubo: &Path) -> Result<Vec<Value>, String> {
             continue;
         }
         let file = war.join(name);
-        let Ok(content) = fs::read(&file) else { continue };
+        let Ok(content) = fs::read(&file) else {
+            continue;
+        };
         let mut aliases = capture_str_list(props, "alias");
-        if aliases.is_empty() {
-            if let Some(a) = capture_str(props, "alias") {
-                aliases.push(a);
-            }
+        if aliases.is_empty()
+            && let Some(a) = capture_str(props, "alias")
+        {
+            aliases.push(a);
         }
         out.push(json!({
             "name": name,
@@ -394,26 +457,37 @@ fn mime_for(name: &str) -> &'static str {
 
 fn in_code(spans: &[(usize, usize)], pos: usize) -> bool {
     // spans are sorted, non-overlapping [start, end) ranges of *non-code* (strings, comments, regex).
-    match spans.binary_search_by(|&(s, e)| {
-        if pos < s { std::cmp::Ordering::Greater } else if pos >= e { std::cmp::Ordering::Less } else { std::cmp::Ordering::Equal }
-    }) {
-        Ok(_) => false,
-        Err(_) => true,
-    }
+    spans
+        .binary_search_by(|&(s, e)| {
+            if pos < s {
+                std::cmp::Ordering::Greater
+            } else if pos >= e {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_err()
 }
 
 /// Index of the delimiter closing the one at `open_at`, ignoring strings/comments/regex.
-fn match_delim(bytes: &[u8], spans: &[(usize, usize)], open_at: usize, open: u8, close: u8) -> Option<usize> {
+fn match_delim(
+    bytes: &[u8],
+    spans: &[(usize, usize)],
+    open_at: usize,
+    open: u8,
+    close: u8,
+) -> Option<usize> {
     let mut depth = 0usize;
     let mut i = open_at;
     let mut span_idx = spans.partition_point(|&(_, e)| e <= open_at);
     while i < bytes.len() {
-        if let Some(&(s, e)) = spans.get(span_idx) {
-            if i >= s {
-                i = e;
-                span_idx += 1;
-                continue;
-            }
+        if let Some(&(s, e)) = spans.get(span_idx)
+            && i >= s
+        {
+            i = e;
+            span_idx += 1;
+            continue;
         }
         let b = bytes[i];
         if b == open {
@@ -454,14 +528,18 @@ impl<'a> Lexer<'a> {
             match c {
                 b'/' if s.get(i + 1) == Some(&b'/') => {
                     let start = i;
-                    while i < s.len() && s[i] != b'\n' { i += 1; }
+                    while i < s.len() && s[i] != b'\n' {
+                        i += 1;
+                    }
                     spans.push((start, i));
                     continue;
                 }
                 b'/' if s.get(i + 1) == Some(&b'*') => {
                     let start = i;
                     i += 2;
-                    while i + 1 < s.len() && !(s[i] == b'*' && s[i + 1] == b'/') { i += 1; }
+                    while i + 1 < s.len() && !(s[i] == b'*' && s[i + 1] == b'/') {
+                        i += 1;
+                    }
                     i = (i + 2).min(s.len());
                     spans.push((start, i));
                     continue;
@@ -470,7 +548,9 @@ impl<'a> Lexer<'a> {
                     let start = i;
                     i += 1;
                     while i < s.len() && s[i] != c {
-                        if s[i] == b'\\' { i += 1; }
+                        if s[i] == b'\\' {
+                            i += 1;
+                        }
                         i += 1;
                     }
                     i = (i + 1).min(s.len());
@@ -501,7 +581,9 @@ impl<'a> Lexer<'a> {
                         i += 1;
                     }
                     i += 1;
-                    while i < s.len() && s[i].is_ascii_alphabetic() { i += 1; }
+                    while i < s.len() && s[i].is_ascii_alphabetic() {
+                        i += 1;
+                    }
                     spans.push((start, i.min(s.len())));
                     last_sig = b'"';
                     last_word.clear();
@@ -514,7 +596,13 @@ impl<'a> Lexer<'a> {
                         template_stack.pop();
                         brace_depth -= 1;
                         // The `}` itself is code (it balances the `{` of `${`); text resumes after it.
-                        i = self.template(i + 1, i + 1, &mut spans, &mut template_stack, brace_depth);
+                        i = self.template(
+                            i + 1,
+                            i + 1,
+                            &mut spans,
+                            &mut template_stack,
+                            brace_depth,
+                        );
                         last_sig = b'"';
                         continue;
                     }
@@ -538,7 +626,14 @@ impl<'a> Lexer<'a> {
     }
 
     /// Scan template text from `i` until the closing backtick or a `${`. Returns the next index.
-    fn template(&self, start: usize, mut i: usize, spans: &mut Vec<(usize, usize)>, stack: &mut Vec<usize>, depth: usize) -> usize {
+    fn template(
+        &self,
+        start: usize,
+        mut i: usize,
+        spans: &mut Vec<(usize, usize)>,
+        stack: &mut Vec<usize>,
+        depth: usize,
+    ) -> usize {
         let s = self.s;
         while i < s.len() {
             match s[i] {
@@ -563,7 +658,20 @@ impl<'a> Lexer<'a> {
 
 fn regex_allowed(last_sig: u8, last_word: &str) -> bool {
     if last_sig.is_ascii_alphanumeric() || last_sig == b'_' || last_sig == b'$' {
-        return matches!(last_word, "return" | "typeof" | "case" | "in" | "of" | "new" | "delete" | "void" | "throw" | "else" | "do");
+        return matches!(
+            last_word,
+            "return"
+                | "typeof"
+                | "case"
+                | "in"
+                | "of"
+                | "new"
+                | "delete"
+                | "void"
+                | "throw"
+                | "else"
+                | "do"
+        );
     }
     !matches!(last_sig, b')' | b']' | b'"' | b'}')
 }
@@ -599,8 +707,14 @@ registeredScriptlets.push({
         assert_eq!(regs.len(), 1);
         assert_eq!(capture_str(&regs[0].1, "name").as_deref(), Some("demo.js"));
         assert_eq!(capture_ident(&regs[0].1, "fn").as_deref(), Some("demo"));
-        assert_eq!(capture_str_list(&regs[0].1, "aliases"), vec!["dm.js", "demo2.js"]);
-        assert_eq!(capture_str_list(&regs[0].1, "dependencies"), vec!["safe-self.fn"]);
+        assert_eq!(
+            capture_str_list(&regs[0].1, "aliases"),
+            vec!["dm.js", "demo2.js"]
+        );
+        assert_eq!(
+            capture_str_list(&regs[0].1, "dependencies"),
+            vec!["safe-self.fn"]
+        );
         let src2 = "function safeSelf() { return 1; }\nregisterScriptlet(safeSelf, { name: 'safe-self.fn' });\n\
             function jp(a) { return safeSelf(); }\nregisterScriptlet(jp, {\n name: 'json-prune.js',\n dependencies: [\n safeSelf,\n ],\n requiresTrust: true,\n});\n";
         let spans2 = Lexer::new(src2).code_spans();

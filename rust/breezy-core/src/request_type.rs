@@ -64,13 +64,32 @@ mod tests {
     #[test]
     fn infers() {
         assert_eq!(infer("https://a.com/", "text/html", true), "document");
-        assert_eq!(infer("https://a.com/x/app.min.js?v=1", "*/*", false), "script");
+        assert_eq!(
+            infer("https://a.com/x/app.min.js?v=1", "*/*", false),
+            "script"
+        );
         assert_eq!(infer("https://a.com/s.CSS#x", "*/*", false), "stylesheet");
-        assert_eq!(infer("https://a.com/pixel", "image/avif,image/webp,*/*", false), "image");
-        assert_eq!(infer("https://a.com/frame", "text/html,application/xhtml+xml", false), "subdocument");
-        assert_eq!(infer("https://a.com/api/v1", "*/*", false), "xmlhttprequest");
+        assert_eq!(
+            infer("https://a.com/pixel", "image/avif,image/webp,*/*", false),
+            "image"
+        );
+        assert_eq!(
+            infer(
+                "https://a.com/frame",
+                "text/html,application/xhtml+xml",
+                false
+            ),
+            "subdocument"
+        );
+        assert_eq!(
+            infer("https://a.com/api/v1", "*/*", false),
+            "xmlhttprequest"
+        );
         assert_eq!(infer("https://a.com", "", false), "xmlhttprequest");
         assert_eq!(infer("https://cdn.a.com/f.woff2", "*/*", false), "font");
-        assert_eq!(infer("https://a.com/v.thisisnotext", "application/x-foo", false), "other");
+        assert_eq!(
+            infer("https://a.com/v.thisisnotext", "application/x-foo", false),
+            "other"
+        );
     }
 }

@@ -214,8 +214,8 @@ android {
         applicationId = "dev.breezy.browser"
         minSdk = minSdkVersion
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.4.2"
+        versionCode = 13
+        versionName = "0.5.0"
     }
 
     // Optional release signing from the environment (CI secrets); falls back to the debug key.
@@ -258,7 +258,14 @@ android {
     }
 
     packaging {
+        // Native libs stay uncompressed and page-aligned so they're mapped straight from the APK.
         jniLibs.useLegacyPackaging = false
+        // Library license/metadata files and Kotlin reflection metadata the app never reads.
+        resources.excludes += listOf(
+            "META-INF/**/LICENSE*", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.version",
+            "META-INF/**/*.kotlin_module", "kotlin/**", "DebugProbesKt.bin", "kotlin-tooling-metadata.json",
+            "META-INF/androidx/**", "META-INF/org/**",
+        )
     }
 }
 
@@ -293,7 +300,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.webkit)
-    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.haze)
     implementation(libs.haze.blur)

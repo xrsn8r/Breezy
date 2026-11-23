@@ -41,8 +41,14 @@ object NativeShield {
         method: String?,
     ): String?
 
-    /** JSON: {hide_selectors, procedural_actions, exceptions, injected_script, generichide}. */
-    @JvmStatic external fun cosmeticResources(url: String): String
+    /**
+     * JSON: {hide_selectors, procedural_actions, exceptions, injected_script, generichide}.
+     * Pass `includeScript = false` when the page's scriptlets are already injected natively.
+     */
+    @JvmStatic external fun cosmeticResources(url: String, includeScript: Boolean): String
+
+    /** The page's scriptlet bundle (`##+js(...)` code), or "" if none. */
+    @JvmStatic external fun scriptlets(url: String): String
 
     /** JSON array of generic hide selectors for the given class/id JSON arrays. */
     @JvmStatic external fun hiddenSelectors(classes: String, ids: String, exceptions: String): String

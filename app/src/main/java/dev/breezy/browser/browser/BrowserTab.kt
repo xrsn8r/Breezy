@@ -20,7 +20,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -363,9 +362,15 @@ class BrowserTab(
         url = target
     }
 
-    fun onPause() = webView.onPause()
+    fun onPause() {
+        webView.onPause()
+        // Pre-rendering offscreen tiles only pays off for the visible tab; save memory otherwise.
+        webView.settings.offscreenPreRaster = false
+    }
+
     fun onResume() {
         webView.onResume()
+        webView.settings.offscreenPreRaster = true
         applySiteSettings()
         deferredUrl?.let { deferredUrl = null; load(it) }
     }
@@ -446,7 +451,10 @@ class BrowserTab(
         @JavascriptInterface
         fun resources(frameUrl: String): String {
             if (!Shield.activeFor(pageHost)) return "{}"
-            val json = NativeShield.cosmeticResources(frameUrl)
+            // Skip the (large) scriptlet bundle when it was already registered natively.
+            val origin = runCatching { frameUrl.toUri().let { "${it.scheme}://${it.host}" + if (it.port != -1) ":${it.port}" else "" } }.getOrNull()
+            val handled = origin != null && synchronized(scriptletOrigins) { origin in scriptletOrigins }
+            val json = NativeShield.cosmeticResources(frameUrl, includeScript = !handled)
             val mine = UserFilters.selectorsFor(runCatching { frameUrl.toUri().host }.getOrNull())
             if (mine.isEmpty()) return json
             // Merge the user's own element-hiding rules ("My filters").
@@ -475,10 +483,8 @@ class BrowserTab(
             // third-party iframe must not be able to trigger injection there.
             val requested = runCatching { frameUrl.toUri().host }.getOrNull()
             if (requested == null || requested != pageHost) return
-            val script = runCatching {
-                org.json.JSONObject(NativeShield.cosmeticResources(frameUrl)).optString("injected_script")
-            }.getOrNull()
-            if (!script.isNullOrEmpty()) main.post { webView.evaluateJavascript(script, null) }
+            val script = NativeShield.scriptlets(frameUrl)
+            if (script.isNotEmpty()) main.post { webView.evaluateJavascript(script, null) }
         }
     }
 
@@ -823,10 +829,8 @@ class BrowserTab(
         val origin = "$scheme://$host" + if (uri.port != -1) ":${uri.port}" else ""
         if (origin in scriptlets) return
         if (!Shield.activeFor(host)) { scriptlets[origin] = null; return }
-        val code = runCatching {
-            org.json.JSONObject(NativeShield.cosmeticResources(uri.toString())).optString("injected_script")
-        }.getOrNull()
-        if (code.isNullOrEmpty()) { scriptlets[origin] = null; return }
+        val code = NativeShield.scriptlets(uri.toString())
+        if (code.isEmpty()) { scriptlets[origin] = null; return }
         val wrapped = "(function(){if(window.__breezyScriptlets)return;" +
             "Object.defineProperty(window,'__breezyScriptlets',{value:true});try{\n$code\n}catch(e){}})();"
         scriptlets[origin] = runCatching {
@@ -858,8 +862,8 @@ class BrowserTab(
 
         /**
          * Present as regular mobile Chrome instead of an embedded WebView: drop the "; wv" token and
-         * "Version/4.0", use Chrome's reduced platform string, stop sending X-Requested-With, and
-         * advertise Chromium client hints. Google sign-in and YouTube treat WebViews differently
+         * "Version/4.0", use Chrome's reduced platform string and advertise Chromium client hints.
+         * (Current WebView no longer sends X-Requested-With.) Google sign-in and YouTube treat WebViews differently
          * (sign-in often refused or not persisted), which also kept YouTube Premium from applying.
          */
         private fun presentAsChrome(settings: WebSettings) {
@@ -868,9 +872,6 @@ class BrowserTab(
             val major = chromeVersion.substringBefore('.')
             settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/$major.0.0.0 Mobile Safari/537.36"
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
-                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
-            }
             if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
                 runCatching {
                     val brands = listOf(

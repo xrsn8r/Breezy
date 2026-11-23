@@ -16,7 +16,10 @@ fn main() -> ExitCode {
     };
     let mut texts = Vec::new();
     for arg in lists {
-        let (path, trusted) = match arg.strip_prefix('+') { Some(p) => (p, true), None => (arg.as_str(), false) };
+        let (path, trusted) = match arg.strip_prefix('+') {
+            Some(p) => (p, true),
+            None => (arg.as_str(), false),
+        };
         match fs::read_to_string(path) {
             Ok(t) => texts.push((t, trusted)),
             Err(e) => {

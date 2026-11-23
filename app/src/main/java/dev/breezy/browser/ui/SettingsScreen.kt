@@ -8,7 +8,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -262,8 +260,8 @@ fun SettingsScreen(
                 }
             }
 
-            // --- Troubleshooting -------------------------------------------------------------------
-            item { SectionHeader("Troubleshooting") }
+            // --- Advanced -------------------------------------------------------------------
+            item { SectionHeader("Advanced") }
             item {
                 SettingsCard {
                     ListItem(
@@ -271,18 +269,6 @@ fun SettingsScreen(
                         supportingContent = { Text("Real blur behind the toolbar (Android 16+). Turn off if some pages render blank or half-drawn") },
                         trailingContent = {
                             Switch(checked = AppSettings.frostedToolbar, onCheckedChange = AppSettings::updateFrostedToolbar)
-                        },
-                        colors = cardItemColors(),
-                    )
-                    ListItem(
-                        headlineContent = { Text("Render pages natively") },
-                        supportingContent = { Text("Draw pages directly in the window instead of through the app UI layer. Restarts the browser") },
-                        trailingContent = {
-                            val activity = LocalContext.current as? dev.breezy.browser.MainActivity
-                            Switch(checked = AppSettings.nativePageHost, onCheckedChange = {
-                                AppSettings.updateNativePageHost(it)
-                                activity?.restartForHostChange()
-                            })
                         },
                         colors = cardItemColors(),
                     )

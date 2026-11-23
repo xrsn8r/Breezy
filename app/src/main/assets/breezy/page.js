@@ -54,18 +54,22 @@
         rate = r;
         mediaElements().forEach(function (m) { try { m.playbackRate = r; } catch (e) {} });
       },
-      // Picture-in-picture without the Fullscreen API: pin the playing video over the whole page.
+      // Picture-in-picture without the Fullscreen API: show only the playing video, filling the
+      // window. Everything else is made invisible (visibility can be re-enabled on a descendant,
+      // so the video stays visible while its siblings, like player controls, disappear), and the
+      // video's ancestors lose transforms/filters that would trap position:fixed inside them.
       focus: function (on) {
         var style = document.getElementById('__breezy_pip');
-        if (!on) {
-          if (style) style.remove();
-          var old = document.querySelector('[data-breezy-pip]');
-          if (old) old.removeAttribute('data-breezy-pip');
-          return;
+        var marked = document.querySelectorAll('[data-breezy-pip],[data-breezy-pip-anc]');
+        for (var i = 0; i < marked.length; i++) {
+          marked[i].removeAttribute('data-breezy-pip');
+          marked[i].removeAttribute('data-breezy-pip-anc');
         }
+        if (!on) { if (style) style.remove(); return; }
         var v = playingElement() || mediaElements().filter(function (m) { return m.tagName === 'VIDEO'; })[0];
         if (!v) return;
         v.setAttribute('data-breezy-pip', '');
+        for (var p = v.parentElement; p; p = p.parentElement) p.setAttribute('data-breezy-pip-anc', '');
         if (!style) {
           style = document.createElement('style');
           style.id = '__breezy_pip';
@@ -73,9 +77,14 @@
         }
         style.textContent =
           'html,body{overflow:hidden!important;background:#000!important}' +
-          '[data-breezy-pip]{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;' +
-          'max-width:none!important;max-height:none!important;transform:none!important;' +
-          'object-fit:contain!important;background:#000!important;z-index:2147483647!important;margin:0!important}';
+          'body *{visibility:hidden!important;pointer-events:none!important}' +
+          '[data-breezy-pip-anc]{transform:none!important;filter:none!important;perspective:none!important;' +
+          'contain:none!important;will-change:auto!important;backdrop-filter:none!important;clip-path:none!important;' +
+          'mask:none!important;overflow:visible!important}' +
+          '[data-breezy-pip]{visibility:visible!important;position:fixed!important;inset:0!important;' +
+          'left:0!important;top:0!important;width:100vw!important;height:100vh!important;' +
+          'max-width:none!important;max-height:none!important;transform:none!important;margin:0!important;' +
+          'object-fit:contain!important;background:#000!important;z-index:2147483647!important;opacity:1!important}';
       },
     },
   });

@@ -1,6 +1,15 @@
 package dev.breezy.browser.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -303,12 +312,39 @@ private fun FrostedToolbar(
                 )
                 Spacer(Modifier.width(6.dp))
             }
+            // While loading, a highlight sweeps through the address (replaces a progress bar).
+            val style = MaterialTheme.typography.labelLarge
             Text(
                 text = UrlInput.display(url).ifEmpty { "Search" },
-                style = MaterialTheme.typography.labelLarge,
+                style = if (tab?.loading == true) style.copy(brush = shimmerBrush(LocalContentColor.current)) else style,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
     }
+}
+
+/**
+ * A soft highlight band that sweeps left to right across text, repeating: the "thinking" shimmer.
+ * The band is wider than the text pill so the sweep enters and leaves smoothly.
+ */
+@Composable
+private fun shimmerBrush(color: Color): Brush {
+    val density = LocalDensity.current
+    val band = with(density) { 120.dp.toPx() }
+    val travel = with(density) { 300.dp.toPx() }
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val x by transition.animateFloat(
+        initialValue = -band,
+        targetValue = travel,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 1400, easing = LinearEasing)),
+        label = "shimmerX",
+    )
+    val dim = color.copy(alpha = 0.38f)
+    return Brush.linearGradient(
+        colors = listOf(dim, color, dim),
+        start = Offset(x, 0f),
+        end = Offset(x + band, 0f),
+        tileMode = TileMode.Clamp,
+    )
 }

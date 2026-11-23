@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -138,19 +137,6 @@ fun BrowserScreen(
                         onOpen = ::navigate,
                     )
                 }
-            }
-
-            // --- Expressive wavy progress -----------------------------------------------------
-            AnimatedVisibility(
-                visible = tab?.loading == true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.statusBarsPadding().align(Alignment.TopCenter),
-            ) {
-                LinearWavyProgressIndicator(
-                    progress = { tab?.progress ?: 0f },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                )
             }
 
             // --- Element picker panel (replaces the toolbar while picking) --------------------

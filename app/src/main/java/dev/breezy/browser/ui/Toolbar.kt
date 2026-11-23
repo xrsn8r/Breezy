@@ -146,7 +146,12 @@ fun MovableBrowserBar(
                 onTabs = onTabs,
                 onMenu = onMenu,
             )
-            FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onSearch) {
+            // VibrantFloatingActionButton applies fillMaxSize() (it expects the toolbar's FAB slot
+            // to size it), so give it an explicit size now that it lives outside that slot.
+            FloatingToolbarDefaults.VibrantFloatingActionButton(
+                onClick = onSearch,
+                modifier = Modifier.size(FloatingToolbarDefaults.ContainerSize),
+            ) {
                 Icon(Icons.Rounded.Search, contentDescription = "Search or type URL")
             }
         }

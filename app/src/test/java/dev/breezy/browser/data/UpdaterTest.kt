@@ -14,3 +14,10 @@ class UpdaterTest {
         assertFalse(Updater.isNewer("0.7", "0.7.0"))
     }
 }
+
+class UpdaterNotesTest {
+    @Test fun extractsWhatsNew() {
+        val body = "## What's new\n\n- **Faster** tabs\n- Fix `x`\n\n**Download:** `a.apk`\n\n<details>about</details>"
+        org.junit.Assert.assertEquals("• Faster tabs\n• Fix x", Updater.notes(body))
+    }
+}

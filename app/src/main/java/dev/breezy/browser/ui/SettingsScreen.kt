@@ -645,6 +645,10 @@ private fun UpdateRow() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val status = dev.breezy.browser.data.Updater.status
+    var notes by remember { mutableStateOf<dev.breezy.browser.data.Updater.Release?>(null) }
+    notes?.let { r ->
+        UpdateDialog(r, onInstall = { notes = null; dev.breezy.browser.data.Updater.download(r) }, onDismiss = { notes = null })
+    }
     val (headline, detail) = when (status) {
         is dev.breezy.browser.data.Updater.Status.Available -> "Update to ${status.release.version}" to "Download and install the new version"
         is dev.breezy.browser.data.Updater.Status.Downloading -> "Downloading ${status.release.version}…" to "Progress is in Downloads; the installer opens when it's done"
@@ -665,7 +669,7 @@ private fun UpdateRow() {
         colors = cardItemColors(),
         modifier = Modifier.clickable {
             when (status) {
-                is dev.breezy.browser.data.Updater.Status.Available -> dev.breezy.browser.data.Updater.download(status.release)
+                is dev.breezy.browser.data.Updater.Status.Available -> notes = status.release
                 is dev.breezy.browser.data.Updater.Status.Downloading, dev.breezy.browser.data.Updater.Status.Verifying,
                 dev.breezy.browser.data.Updater.Status.Checking -> Unit
                 else -> scope.launch { dev.breezy.browser.data.Updater.check(context.applicationContext) }

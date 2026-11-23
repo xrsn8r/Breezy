@@ -28,7 +28,11 @@ object Updater {
     private const val REPO = "xrsn8r/Breezy"
     private const val DAY = 24 * 60 * 60 * 1000L
 
-    data class Release(val version: String, val notesUrl: String, val apkUrl: String, val apkName: String, val sumsUrl: String?)
+    data class Release(
+        val version: String, val notesUrl: String, val apkUrl: String, val apkName: String, val sumsUrl: String?,
+        /** The release's "What's new" list as plain text. */
+        val notes: String = "",
+    )
 
     sealed interface Status {
         data object Idle : Status
@@ -130,7 +134,7 @@ object Updater {
             if (name.endsWith(".apk") && (apk == null || "arm64" in name)) apk = name to url
             if (name == "SHA256SUMS.txt") sums = url
         }
-        apk?.let { Release(version, json.optString("html_url"), it.second, it.first, sums) }
+        apk?.let { Release(version, json.optString("html_url"), it.second, it.first, sums, notes(json.optString("body"))) }
     }
 
     private fun fetch(url: String, github: Boolean = false): String {
@@ -144,6 +148,16 @@ object Updater {
         } finally {
             conn.disconnect()
         }
+    }
+
+    /** The "What's new" part of a release body, as plain text (markdown markers removed). */
+    fun notes(body: String): String {
+        val lines = body.lines()
+        val start = lines.indexOfFirst { it.trim().equals("## What's new", true) }.let { if (it < 0) 0 else it + 1 }
+        return lines.drop(start)
+            .takeWhile { !it.startsWith("**Download:**") && !it.startsWith("<details") && !it.startsWith("## ") }
+            .joinToString("\n") { it.replace("**", "").replace("`", "").replaceFirst(Regex("^- "), "• ") }
+            .trim()
     }
 
     /** Numeric dotted-version comparison: 0.10.0 > 0.9.3. */

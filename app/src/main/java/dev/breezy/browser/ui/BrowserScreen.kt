@@ -45,6 +45,11 @@ import dev.breezy.browser.browser.UrlInput
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
+import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.verticalScroll
 
 @Composable
 fun BrowserScreen(
@@ -70,6 +75,7 @@ fun BrowserScreen(
     var article by remember { mutableStateOf<BrowserTab.Article?>(null) }
     var mediaOpen by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+    var updateNotes by remember { mutableStateOf<dev.breezy.browser.data.Updater.Release?>(null) }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
     var shieldOpen by rememberSaveable { mutableStateOf(false) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -385,11 +391,18 @@ fun BrowserScreen(
             duration = SnackbarDuration.Indefinite,
         )
         if (result == SnackbarResult.ActionPerformed) {
-            dev.breezy.browser.data.Updater.download(r)
-            Toast.makeText(context, "Downloading Breezy ${r.version}…", Toast.LENGTH_SHORT).show()
+            updateNotes = r
         } else {
             dev.breezy.browser.data.Updater.dismiss(context, r.version)
         }
+    }
+
+    updateNotes?.let { r ->
+        UpdateDialog(r, onInstall = {
+            updateNotes = null
+            dev.breezy.browser.data.Updater.download(r)
+            Toast.makeText(context, "Downloading Breezy ${r.version}…", Toast.LENGTH_SHORT).show()
+        }, onDismiss = { updateNotes = null })
     }
 
     val closed = tabs.recentlyClosed
@@ -436,4 +449,24 @@ fun BrowserScreen(
     if (speedOpen && tab != null) {
         SpeedDialog(current = tab.playbackRate, onPick = { tab.changePlaybackRate(it) }, onDismiss = { speedOpen = false })
     }
+}
+
+/** "Breezy x.y.z · What's new" with the release notes, before downloading the update. */
+@Composable
+internal fun UpdateDialog(release: dev.breezy.browser.data.Updater.Release, onInstall: () -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Breezy ${release.version}") },
+        text = {
+            androidx.compose.foundation.layout.Column(
+                Modifier.heightIn(max = 360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()),
+            ) {
+                Text("What's new", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+                Text(release.notes.ifBlank { "Bug fixes and improvements." }, style = MaterialTheme.typography.bodyMedium)
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onInstall) { Text("Update") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Later") } },
+    )
 }

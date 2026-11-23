@@ -95,6 +95,11 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.FormatSize
@@ -512,15 +517,26 @@ fun MenuSheet(
     onSpeed: () -> Unit,
     onNewPrivateTab: () -> Unit,
     onHistory: () -> Unit,
+    onShields: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val onPage = tab != null && tab.url.startsWith("http")
     val itemModifier = Modifier.clip(RoundedCornerShape(16.dp))
+    var pageOpen by rememberSaveable { mutableStateOf(true) }
+    var toolsOpen by rememberSaveable { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
+            // --- Most-used actions --------------------------------------------------------------
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                QuickAction(Icons.Rounded.Add, "New tab", Modifier.weight(1f), onNewTab)
+                QuickAction(Icons.Rounded.Shield, "Shields", Modifier.weight(1f), onShields)
+                QuickAction(Icons.Rounded.History, "History", Modifier.weight(1f), onHistory)
+            }
+            Spacer(Modifier.height(12.dp))
+
             if (tab != null) {
                 // Connected nav buttons: back · forward · reload · share
                 Row(
@@ -546,101 +562,117 @@ fun MenuSheet(
                                 else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                             },
                             colors = FilledTonalToggleButtonDefaults.colors(),
-                            modifier = Modifier.weight(1f).height(56.dp),
+                            modifier = Modifier.weight(1f).height(52.dp),
                         ) { Icon(icon, contentDescription = label) }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
             }
-            ListItem(
-                headlineContent = { Text("New tab") },
-                leadingContent = { Icon(Icons.Rounded.Add, null) },
-                modifier = itemModifier.clickable(onClick = onNewTab),
-            )
+
             if (BrowserTab.multiProfileSupported) {
                 ListItem(
                     headlineContent = { Text("New private tab") },
-                    supportingContent = { Text("No history; cookies and site data are wiped when it closes") },
                     leadingContent = { Icon(Icons.Rounded.VisibilityOff, null) },
                     modifier = itemModifier.clickable(onClick = onNewPrivateTab),
                 )
             }
+
             if (onPage) {
-                ListItem(
-                    headlineContent = { Text("Find in page") },
-                    leadingContent = { Icon(Icons.Rounded.Search, null) },
-                    modifier = itemModifier.clickable(onClick = onFind),
-                )
-                ListItem(
-                    headlineContent = { Text("Reader mode") },
-                    leadingContent = { Icon(Icons.AutoMirrored.Rounded.Article, null) },
-                    modifier = itemModifier.clickable(onClick = onReader),
-                )
-                ListItem(
-                    headlineContent = { Text("Text size") },
-                    leadingContent = { Icon(Icons.Rounded.FormatSize, null) },
-                    modifier = itemModifier.clickable(onClick = onTextSize),
-                )
-                if (tab!!.media.hasMedia) {
+                tab!!
+                MenuGroup("Page", Icons.AutoMirrored.Rounded.Article, pageOpen, { pageOpen = it }) {
+                    MenuRow(Icons.Rounded.Search, "Find in page", onClick = onFind)
+                    MenuRow(Icons.AutoMirrored.Rounded.Article, "Reader mode", onClick = onReader)
+                    MenuRow(Icons.Rounded.FormatSize, "Text size", onClick = onTextSize)
+                    if (tab.media.hasMedia) {
+                        MenuRow(Icons.Rounded.Speed, "Playback speed", "${tab.playbackRate}×".replace(".0×", "×"), onClick = onSpeed)
+                    }
+                    MenuRow(Icons.Rounded.AddHome, "Add to home", onClick = onAddToHome)
                     ListItem(
-                        headlineContent = { Text("Playback speed") },
-                        supportingContent = { Text("${tab.playbackRate}×".replace(".0×", "×")) },
-                        leadingContent = { Icon(Icons.Rounded.Speed, null) },
-                        modifier = itemModifier.clickable(onClick = onSpeed),
+                        headlineContent = { Text("Desktop site") },
+                        leadingContent = { Icon(Icons.Rounded.DesktopWindows, null) },
+                        trailingContent = { Switch(checked = tab.desktopMode, onCheckedChange = { tab.toggleDesktopMode() }) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }
-            }
-            ListItem(
-                headlineContent = { Text("History") },
-                leadingContent = { Icon(Icons.Rounded.History, null) },
-                modifier = itemModifier.clickable(onClick = onHistory),
-            )
-            if (onPage) {
-                ListItem(
-                    headlineContent = { Text("Add to home") },
-                    supportingContent = { Text("Pin this page as a home page shortcut") },
-                    leadingContent = { Icon(Icons.Rounded.AddHome, null) },
-                    modifier = itemModifier.clickable(onClick = onAddToHome),
-                )
-                ListItem(
-                    headlineContent = { Text("Block element") },
-                    supportingContent = { Text("Tap anything on the page to hide it") },
-                    leadingContent = { Icon(Icons.Rounded.Block, null) },
-                    modifier = itemModifier.clickable(onClick = onBlockElement),
-                )
-                ListItem(
-                    headlineContent = { Text("Desktop site") },
-                    leadingContent = { Icon(Icons.Rounded.DesktopWindows, null) },
-                    trailingContent = { Switch(checked = tab!!.desktopMode, onCheckedChange = { tab.toggleDesktopMode() }) },
-                )
-                ListItem(
-                    headlineContent = { Text("Unlock scrolling") },
-                    supportingContent = { Text("For pages stuck behind a hidden pop-up") },
-                    leadingContent = { Icon(Icons.Rounded.SwipeVertical, null) },
-                    modifier = itemModifier.clickable(onClick = onUnlockScrolling),
-                )
-                if (looksLikeFilterList(tab!!.url)) {
-                    ListItem(
-                        headlineContent = { Text("Add page as filter list") },
-                        supportingContent = { Text("Use this page's rules in the ad blocker") },
-                        leadingContent = { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null) },
-                        modifier = itemModifier.clickable(onClick = onAddAsFilterList),
-                    )
+                MenuGroup("Tools", Icons.Rounded.Build, toolsOpen, { toolsOpen = it }) {
+                    MenuRow(Icons.Rounded.Block, "Block element", "Tap anything on the page to hide it", onClick = onBlockElement)
+                    if (looksLikeFilterList(tab.url)) {
+                        MenuRow(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add page as filter list", onClick = onAddAsFilterList)
+                    }
+                    MenuRow(Icons.Rounded.SwipeVertical, "Unlock scrolling", "For pages stuck behind a hidden pop-up", onClick = onUnlockScrolling)
+                    MenuRow(Icons.Rounded.BugReport, "Page diagnostics", onClick = onDiagnostics)
                 }
-                ListItem(
-                    headlineContent = { Text("Page diagnostics") },
-                    leadingContent = { Icon(Icons.Rounded.BugReport, null) },
-                    modifier = itemModifier.clickable(onClick = onDiagnostics),
-                )
             }
             ListItem(
                 headlineContent = { Text("Settings") },
-                supportingContent = { Text("Filter lists, my filters, search engine, dark mode") },
                 leadingContent = { Icon(Icons.Rounded.Settings, null) },
                 modifier = itemModifier.clickable(onClick = onSettings),
             )
         }
     }
+}
+
+@Composable
+private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = modifier.height(76.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(icon, contentDescription = null)
+            Spacer(Modifier.height(6.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/** A collapsible section of the menu. */
+@Composable
+private fun MenuGroup(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    open: Boolean,
+    onToggle: (Boolean) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val rotation by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Column {
+            ListItem(
+                headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
+                leadingContent = { Icon(icon, null) },
+                trailingContent = { Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.rotate(rotation)) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.clickable { onToggle(!open) },
+            )
+            AnimatedVisibility(visible = open) {
+                Column(Modifier.padding(bottom = 8.dp)) { content() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = subtitle?.let { { Text(it) } },
+        leadingContent = { Icon(icon, null) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
+    )
 }
 
 /** Plain-text list URLs (…/list.txt, raw?file=…txt) get "Add page as filter list". */

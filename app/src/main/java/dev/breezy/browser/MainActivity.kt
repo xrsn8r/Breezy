@@ -46,6 +46,8 @@ class MainActivity : ComponentActivity(), TabHost {
         permissionCallback = null
     }
     private var swipeRefresh: androidx.swiperefreshlayout.widget.SwipeRefreshLayout? = null
+    private var uiView: View? = null
+    private var pipWasActive = false
 
     private val fileChooser = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
@@ -67,7 +69,7 @@ class MainActivity : ComponentActivity(), TabHost {
         }
         if (incoming != null) tabs.newTab(incoming)
 
-        val ui = ComposeView(this).apply {
+        val ui = ComposeView(this).also { uiView = it }.apply {
             setContent {
                 BreezyTheme {
                     BrowserScreen(
@@ -104,7 +106,7 @@ class MainActivity : ComponentActivity(), TabHost {
                 insets
             }
             lifecycleScope.launch {
-                snapshotFlow { tabs.current }.collect { attachToHost(it) }
+                snapshotFlow { tabs.current }.collect { attachToHost(it); updatePip() }
             }
             lifecycleScope.launch {
                 snapshotFlow { tabs.current?.loading == true }.collect { loading -> if (!loading) refresh.isRefreshing = false }
@@ -153,8 +155,12 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onPause() {
         super.onPause()
-        // In picture-in-picture or background play, keep the page running.
-        if (!isInPictureInPictureMode && !keepPlaying) tabs.current?.onPause()
+        if (keepPlaying || isInPictureInPictureMode) {
+            // Keep the page "visible" to Chromium so video isn't suspended in the background.
+            tabs.current?.webView?.keepVisible = true
+        } else {
+            tabs.current?.onPause()
+        }
         tabs.save()
         Shield.flush()
         dev.breezy.browser.data.Stats.flush()
@@ -162,6 +168,12 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onStop() {
         super.onStop()
+        if (pipWasActive && !isInPictureInPictureMode) {
+            // The picture-in-picture window was dismissed: stop playback.
+            pipWasActive = false
+            tabs.current?.let { it.mediaPause(); it.setVideoFocus(false); it.webView.keepVisible = false; it.onPause() }
+            return
+        }
         if (keepPlaying) {
             dev.breezy.browser.media.MediaHub.tab = tabs.current
             ensureNotificationPermission()
@@ -171,6 +183,7 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onResume() {
         super.onResume()
+        tabs.current?.webView?.keepVisible = false
         tabs.current?.onResume()
         dev.breezy.browser.media.MediaPlaybackService.stop(this)
         dev.breezy.browser.media.MediaHub.tab = null
@@ -203,17 +216,44 @@ class MainActivity : ComponentActivity(), TabHost {
 
     // --- Picture-in-picture -----------------------------------------------------------------------
 
+    /** PiP is offered for fullscreen video, or whenever a video is playing in the current tab. */
+    private val pipEligible: Boolean
+        get() = fullscreenView != null || tabs.current?.media?.let { it.playing && it.video } == true
+
     private fun pipParams(enabled: Boolean): android.app.PictureInPictureParams {
-        val b = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9))
+        // Android allows aspect ratios between 1:2.39 and 2.39:1.
+        val aspect = (tabs.current?.media?.aspect ?: (16f / 9f)).coerceIn(0.42f, 2.38f)
+        val b = android.app.PictureInPictureParams.Builder()
+            .setAspectRatio(android.util.Rational((aspect * 1000).toInt(), 1000))
         if (android.os.Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(enabled).setSeamlessResizeEnabled(true)
         return b.build()
     }
 
+    private fun updatePip() {
+        runCatching { setPictureInPictureParams(pipParams(pipEligible)) }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // Pre-Android 12: enter PiP manually when leaving during fullscreen video.
-        if (fullscreenView != null && android.os.Build.VERSION.SDK_INT < 31) {
+        // Before Android 12 there's no auto-enter: do it when the user leaves (home / recents).
+        if (pipEligible && android.os.Build.VERSION.SDK_INT < 31) {
             runCatching { enterPictureInPictureMode(pipParams(true)) }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(inPip: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(inPip, newConfig)
+        val tab = tabs.current
+        // Only the page shows in the small window: hide the browser UI.
+        uiView?.visibility = if (inPip) View.GONE else View.VISIBLE
+        tab?.webView?.keepVisible = inPip
+        if (inPip) {
+            pipWasActive = true
+            if (fullscreenView == null) tab?.setVideoFocus(true)
+        } else if (!pipWasActive || lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            // Expanded back to full screen.
+            pipWasActive = false
+            tab?.setVideoFocus(false)
         }
     }
 
@@ -254,6 +294,7 @@ class MainActivity : ComponentActivity(), TabHost {
     }
 
     override fun onMediaStateChanged(tab: BrowserTab) {
+        if (tab === tabs.current) updatePip()
         if (dev.breezy.browser.media.MediaHub.tab === tab && !hasWindowFocus()) {
             dev.breezy.browser.media.MediaPlaybackService.update(this)
         }
@@ -281,7 +322,7 @@ class MainActivity : ComponentActivity(), TabHost {
         // Videos are almost always landscape: rotate like Chrome does for fullscreen video.
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         // Leaving the app during fullscreen video drops into picture-in-picture.
-        runCatching { setPictureInPictureParams(pipParams(true)) }
+        updatePip()
         // Re-add so it sits on top of Compose's back handlers.
         fullscreenBack.remove()
         onBackPressedDispatcher.addCallback(this, fullscreenBack)
@@ -298,7 +339,7 @@ class MainActivity : ComponentActivity(), TabHost {
         fullscreenView = null
         fullscreenBack.isEnabled = false
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        runCatching { setPictureInPictureParams(pipParams(false)) }
+        updatePip()
         WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
         onFullscreenExit?.invoke()
         onFullscreenExit = null

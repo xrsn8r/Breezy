@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 fun HistoryScreen(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
     BackHandler(onBack = onDismiss)
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val version by History.version.collectAsState()
     var query by remember { mutableStateOf("") }
     var entries by remember { mutableStateOf<List<HistoryEntry>>(emptyList()) }
@@ -97,7 +98,7 @@ fun HistoryScreen(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
                         ListItem(
                             headlineContent = { Text(e.title.ifBlank { UrlInput.display(e.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             supportingContent = { Text(UrlInput.display(e.url) + " · " +
-                                DateUtils.formatDateTime(null, e.lastVisit, DateUtils.FORMAT_SHOW_TIME), maxLines = 1) },
+                                DateUtils.formatDateTime(context, e.lastVisit, DateUtils.FORMAT_SHOW_TIME), maxLines = 1) },
                             trailingContent = {
                                 IconButton(onClick = { scope.launch { History.delete(e.url) } }) { Icon(Icons.Rounded.Close, "Remove") }
                             },

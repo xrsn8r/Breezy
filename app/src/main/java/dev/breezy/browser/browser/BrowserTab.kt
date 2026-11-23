@@ -99,7 +99,15 @@ class BrowserTab(
     var findResult by mutableStateOf<Pair<Int, Int>?>(null)
         private set
 
-    data class MediaState(val playing: Boolean = false, val title: String = "", val hasMedia: Boolean = false)
+    data class MediaState(
+        val playing: Boolean = false,
+        val title: String = "",
+        val hasMedia: Boolean = false,
+        /** The playing element is a video (not audio only). */
+        val video: Boolean = false,
+        /** Video width / height, for the picture-in-picture window. */
+        val aspect: Float = 16f / 9f,
+    )
     var media by mutableStateOf(MediaState())
         private set
     var playbackRate by mutableFloatStateOf(1f)
@@ -137,7 +145,7 @@ class BrowserTab(
         context, if (dark) R.style.Theme_Breezy_Web_Dark else R.style.Theme_Breezy_Web_Light,
     )
 
-    val webView: WebView = WebView(webContext).apply {
+    val webView: BreezyWebView = BreezyWebView(webContext).apply {
         // A private tab's profile must be set before the WebView is used for anything else.
         profileName?.let { name ->
             runCatching { WebViewCompat.setProfile(this, name) }
@@ -300,6 +308,10 @@ class BrowserTab(
     // --- Media --------------------------------------------------------------------------------------
 
     fun mediaPlay() = webView.evaluateJavascript("window.__breezyMedia&&__breezyMedia.play()", null)
+
+    /** Picture-in-picture: make the playing video fill the page (and undo it afterwards). */
+    fun setVideoFocus(on: Boolean) =
+        webView.evaluateJavascript("window.__breezyMedia&&__breezyMedia.focus($on)", null)
     fun mediaPause() = webView.evaluateJavascript("window.__breezyMedia&&__breezyMedia.pause()", null)
 
     fun changePlaybackRate(rate: Float) {
@@ -317,9 +329,12 @@ class BrowserTab(
             .toString()
 
         @JavascriptInterface
-        fun mediaState(playing: Boolean, title: String) {
+        fun mediaState(playing: Boolean, title: String, video: Boolean, aspect: Double) {
             main.post {
-                media = MediaState(playing = playing, title = title.ifBlank { this@BrowserTab.title }, hasMedia = true)
+                media = MediaState(
+                    playing = playing, title = title.ifBlank { this@BrowserTab.title }, hasMedia = true,
+                    video = video, aspect = aspect.toFloat().takeIf { it.isFinite() && it > 0f } ?: (16f / 9f),
+                )
                 host.onMediaStateChanged(this@BrowserTab)
             }
         }

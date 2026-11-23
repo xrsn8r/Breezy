@@ -345,6 +345,7 @@ fun BrowserScreen(
             onSpeed = { menuOpen = false; speedOpen = true },
             onNewPrivateTab = { menuOpen = false; openNewTab(private = true) },
             onHistory = { menuOpen = false; historyOpen = true },
+            onShields = { menuOpen = false; shieldOpen = true },
             onDismiss = { menuOpen = false },
         )
     }

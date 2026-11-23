@@ -16,17 +16,26 @@
   function anyPlaying() {
     return mediaElements().some(function (m) { return !m.paused && !m.ended && m.readyState > 2; });
   }
-  var last = null, timer = 0;
+  function playingElement() {
+    var list = mediaElements().filter(function (m) { return !m.paused && !m.ended && m.readyState > 2; });
+    // Prefer the largest playing video.
+    list.sort(function (a, b) { return (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight); });
+    return list[0] || null;
+  }
+  var last = '', timer = 0;
   function report() {
     clearTimeout(timer);
     timer = setTimeout(function () {
-      var playing = anyPlaying();
-      if (playing === last) return;
-      last = playing;
-      try { bridge.mediaState(playing, document.title || ''); } catch (e) {}
+      var el = playingElement();
+      var isVideo = !!(el && el.tagName === 'VIDEO' && el.videoWidth > 0);
+      var aspect = isVideo ? el.videoWidth / el.videoHeight : 16 / 9;
+      var key = (!!el) + ':' + isVideo + ':' + aspect.toFixed(2);
+      if (key === last) return;
+      last = key;
+      try { bridge.mediaState(!!el, document.title || '', isVideo, aspect); } catch (e) {}
     }, 150);
   }
-  ['play', 'playing', 'pause', 'ended', 'emptied'].forEach(function (type) {
+  ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata', 'resize'].forEach(function (type) {
     document.addEventListener(type, function (e) {
       if (type === 'play' && rate !== 1 && e.target && e.target.playbackRate !== rate) {
         try { e.target.playbackRate = rate; } catch (_) {}
@@ -45,6 +54,29 @@
         rate = r;
         mediaElements().forEach(function (m) { try { m.playbackRate = r; } catch (e) {} });
       },
+      // Picture-in-picture without the Fullscreen API: pin the playing video over the whole page.
+      focus: function (on) {
+        var style = document.getElementById('__breezy_pip');
+        if (!on) {
+          if (style) style.remove();
+          var old = document.querySelector('[data-breezy-pip]');
+          if (old) old.removeAttribute('data-breezy-pip');
+          return;
+        }
+        var v = playingElement() || mediaElements().filter(function (m) { return m.tagName === 'VIDEO'; })[0];
+        if (!v) return;
+        v.setAttribute('data-breezy-pip', '');
+        if (!style) {
+          style = document.createElement('style');
+          style.id = '__breezy_pip';
+          (document.head || document.documentElement).appendChild(style);
+        }
+        style.textContent =
+          'html,body{overflow:hidden!important;background:#000!important}' +
+          '[data-breezy-pip]{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;' +
+          'max-width:none!important;max-height:none!important;transform:none!important;' +
+          'object-fit:contain!important;background:#000!important;z-index:2147483647!important;margin:0!important}';
+      },
     },
   });
 
@@ -52,10 +84,22 @@
   // Pages pause media on visibilitychange; when background play is on, report "always visible".
   if (cfg.bgPlay) {
     try {
-      Object.defineProperty(Document.prototype, 'hidden', { get: function () { return false; }, configurable: true });
-      Object.defineProperty(Document.prototype, 'visibilityState', { get: function () { return 'visible'; }, configurable: true });
-      document.addEventListener('visibilitychange', function (e) { e.stopImmediatePropagation(); }, true);
-      window.addEventListener('pagehide', function (e) { if (anyPlaying()) e.stopImmediatePropagation(); }, true);
+      var visible = function () { return 'visible'; }, notHidden = function () { return false; };
+      Object.defineProperty(Document.prototype, 'hidden', { get: notHidden, configurable: true });
+      Object.defineProperty(Document.prototype, 'visibilityState', { get: visible, configurable: true });
+      Object.defineProperty(Document.prototype, 'webkitHidden', { get: notHidden, configurable: true });
+      Object.defineProperty(Document.prototype, 'webkitVisibilityState', { get: visible, configurable: true });
+      Document.prototype.hasFocus = function () { return true; };
+      var swallow = function (e) { e.stopImmediatePropagation(); };
+      // Registered at document start on window (capture), so they run before any page listener.
+      ['visibilitychange', 'webkitvisibilitychange'].forEach(function (t) {
+        window.addEventListener(t, swallow, true);
+        document.addEventListener(t, swallow, true);
+      });
+      ['blur', 'pagehide', 'freeze'].forEach(function (t) {
+        window.addEventListener(t, function (e) { if (anyPlaying()) e.stopImmediatePropagation(); }, true);
+        document.addEventListener(t, function (e) { if (anyPlaying()) e.stopImmediatePropagation(); }, true);
+      });
     } catch (e) {}
   }
 

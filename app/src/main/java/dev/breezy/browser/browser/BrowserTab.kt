@@ -9,6 +9,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.view.ContextThemeWrapper
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -30,6 +31,8 @@ import androidx.core.net.toUri
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import dev.breezy.browser.AppSettings
+import dev.breezy.browser.R
 import dev.breezy.browser.adblock.NativeShield
 import dev.breezy.browser.adblock.Shield
 import java.util.concurrent.atomic.AtomicInteger
@@ -76,7 +79,19 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     private val main = Handler(Looper.getMainLooper())
     private val mobileUserAgent: String
 
-    val webView: WebView = WebView(context).apply {
+    /**
+     * WebView decides dark rendering from its context's theme (`isLightTheme`): with a dark
+     * theme, pages see `prefers-color-scheme: dark` and those without a dark style are
+     * algorithmically darkened. Wrap the activity in a light or dark theme per the setting.
+     */
+    private val dark = AppSettings.darkWebPages
+    private val webContext = ContextThemeWrapper(
+        context, if (dark) R.style.Theme_Breezy_Web_Dark else R.style.Theme_Breezy_Web_Light,
+    )
+
+    val webView: WebView = WebView(webContext).apply {
+        // Avoid a white flash before the first paint in dark mode.
+        setBackgroundColor(if (dark) 0xFF121212.toInt() else android.graphics.Color.WHITE)
         settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -90,6 +105,9 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             allowFileAccess = false
             allowContentAccess = false
+        }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
+            WebSettingsCompat.setSafeBrowsingEnabled(settings, true)
         }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
@@ -208,6 +226,10 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         @JavascriptInterface
         fun injectScriptlets(frameUrl: String) {
             if (!Shield.activeFor(pageHost)) return
+            // Only for the top page's own site: evaluateJavascript targets the main frame, so a
+            // third-party iframe must not be able to trigger injection there.
+            val requested = runCatching { frameUrl.toUri().host }.getOrNull()
+            if (requested == null || requested != pageHost) return
             val script = runCatching {
                 org.json.JSONObject(NativeShield.cosmeticResources(frameUrl)).optString("injected_script")
             }.getOrNull()
@@ -242,7 +264,8 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
             loading = true
             updateNav()
             if (!documentStartScriptSupported) {
-                view.evaluateJavascript(cosmeticScript(view.context), null)
+                view.evaluateJavascript(asset(view.context, SCROLL_REPAIR), null)
+                view.evaluateJavascript(asset(view.context, COSMETIC), null)
             }
         }
 
@@ -299,7 +322,12 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
 
     private fun download(context: Context, url: String, userAgent: String, disposition: String?, mime: String?) {
         runCatching {
+            // Strip path separators/control chars so a server can't steer the file location.
             val name = URLUtil.guessFileName(url, disposition, mime)
+                .replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_")
+                .trimStart('.')
+                .ifEmpty { "download" }
+            if (!url.startsWith("http://") && !url.startsWith("https://")) error("unsupported scheme")
             val request = DownloadManager.Request(url.toUri())
                 .setMimeType(mime)
                 .addRequestHeader("User-Agent", userAgent)
@@ -314,20 +342,53 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         }
     }
 
+    // --- Page tools --------------------------------------------------------------------------------
+
+    /** Force-release scroll locks and make large invisible overlays click-through. */
+    fun unlockScrolling(onDone: (Int) -> Unit) {
+        webView.evaluateJavascript(asset(webView.context, FORCE_UNLOCK)) { result ->
+            onDone(result?.toIntOrNull() ?: 0)
+        }
+    }
+
+    /** Collect page + WebView metrics to diagnose rendering/scrolling problems. */
+    fun diagnostics(onResult: (String) -> Unit) {
+        val wv = webView
+        val native = buildString {
+            appendLine("WebView ${wv.width}x${wv.height}px, scrollY=${wv.scrollY}")
+            @Suppress("DEPRECATION")
+            appendLine("contentHeight=${wv.contentHeight}css  scale=${"%.2f".format(wv.scale)}")
+            appendLine("canScrollDown=${wv.canScrollVertically(1)} canScrollUp=${wv.canScrollVertically(-1)}")
+            appendLine("darkTheme=$dark shields=${Shield.activeFor(pageHost)}")
+            appendLine("UA: ${wv.settings.userAgentString}")
+        }
+        wv.evaluateJavascript(asset(wv.context, DIAGNOSTICS)) { json ->
+            // evaluateJavascript returns a JSON-encoded string literal.
+            val page = runCatching { org.json.JSONTokener(json).nextValue().toString() }.getOrDefault(json.orEmpty())
+            onResult(native + "\n" + page)
+        }
+    }
+
     companion object {
         private var nextId = 1L
-        private var script: String? = null
+        private const val COSMETIC = "adblock/cosmetic.js"
+        private const val SCROLL_REPAIR = "breezy/scroll-repair.js"
+        private const val FORCE_UNLOCK = "breezy/force-unlock.js"
+        private const val DIAGNOSTICS = "breezy/diagnostics.js"
+        private val scripts = HashMap<String, String>()
 
         val documentStartScriptSupported: Boolean by lazy {
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         }
 
-        fun cosmeticScript(context: Context): String = script
-            ?: context.assets.open("adblock/cosmetic.js").bufferedReader().use { it.readText() }.also { script = it }
+        fun asset(context: Context, path: String): String = synchronized(scripts) {
+            scripts.getOrPut(path) { context.assets.open(path).bufferedReader().use { it.readText() } }
+        }
 
         private fun installCosmeticScript(webView: WebView) {
             if (documentStartScriptSupported) {
-                WebViewCompat.addDocumentStartJavaScript(webView, cosmeticScript(webView.context), setOf("*"))
+                WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, SCROLL_REPAIR), setOf("*"))
+                WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, COSMETIC), setOf("*"))
             }
         }
     }

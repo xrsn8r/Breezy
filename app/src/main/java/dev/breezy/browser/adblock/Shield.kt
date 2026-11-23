@@ -3,6 +3,8 @@ package dev.breezy.browser.adblock
 import android.content.Context
 import dev.breezy.browser.BuildConfig
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import androidx.core.net.toUri
 import android.util.Base64
 import android.util.Log
 import android.webkit.WebResourceResponse
@@ -32,19 +34,16 @@ object Shield {
     private const val KEY_UPDATED = "lists_updated_at"
     private const val KEY_TOTAL = "total_blocked"
 
-    /** Lists fetched by "Update filter lists". Keep in sync with app/build.gradle.kts. */
-    private val LIST_URLS = listOf(
-        "https://easylist.to/easylist/easylist.txt",
-        "https://easylist.to/easylist/easyprivacy.txt",
-        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
-        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
-        "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-unbreak.txt",
-    )
+    private const val KEY_LISTS_ENABLED = "lists_enabled"
+    private const val KEY_LISTS_COMPILED = "lists_compiled"
+    private const val KEY_CUSTOM = "custom_lists"
+    private const val AUTO_UPDATE_INTERVAL = 7L * 24 * 60 * 60 * 1000
     private const val RESOURCES_URL =
         "https://raw.githubusercontent.com/brave/adblock-resources/master/dist/resources.json"
 
     private lateinit var prefs: SharedPreferences
     private lateinit var dir: File
+    private lateinit var listsDir: File
 
     @Volatile var ready = false
         private set
@@ -67,11 +66,21 @@ object Shield {
         val listsUpdatedAt: Long = 0,
         val totalBlocked: Long = 0,
         val lastError: String? = null,
-    )
+        val lists: List<FilterList> = FilterCatalog.builtIn,
+        val enabledLists: Set<String> = FilterCatalog.defaultIds,
+        val compiledLists: Set<String> = FilterCatalog.defaultIds,
+        val listMeta: Map<String, ListMeta> = emptyMap(),
+    ) {
+        /** Selection differs from what the running engine was built from. */
+        val pendingChanges: Boolean get() = enabledLists != compiledLists
+    }
+
+    data class ListMeta(val rules: Int, val fetchedAt: Long, val bytes: Long)
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         dir = File(context.filesDir, "adblock").apply { mkdirs() }
+        listsDir = File(dir, "lists").apply { mkdirs() }
         enabled = prefs.getBoolean(KEY_ENABLED, true)
         allowlist = prefs.getStringSet(KEY_ALLOWLIST, emptySet())!!.toSet()
         totalBlocked.set(prefs.getLong(KEY_TOTAL, 0))
@@ -110,34 +119,160 @@ object Shield {
         if (bytes != null) NativeShield.loadResources(bytes)
     }
 
-    /** Download fresh filter lists, compile them on-device and swap the engine in. */
-    suspend fun updateLists(context: Context): Boolean = withContext(Dispatchers.IO) {
+    // --- Filter lists ---------------------------------------------------------------------------
+
+    private fun customLists(): List<FilterList> = FilterList.customListFromJson(prefs.getString(KEY_CUSTOM, null))
+    private fun allLists(): List<FilterList> = FilterCatalog.builtIn + customLists()
+    private fun enabledIds(): Set<String> = prefs.getStringSet(KEY_LISTS_ENABLED, FilterCatalog.defaultIds)!!.toSet()
+    private fun compiledIds(): Set<String> = prefs.getStringSet(KEY_LISTS_COMPILED, FilterCatalog.defaultIds)!!.toSet()
+    private fun listFile(id: String) = File(listsDir, "$id.txt")
+
+    fun setListEnabled(id: String, on: Boolean) {
+        val ids = if (on) enabledIds() + id else enabledIds() - id
+        prefs.edit { putStringSet(KEY_LISTS_ENABLED, ids) }
+        publish()
+    }
+
+    /** Download and validate a custom list, then enable it. Returns an error message or null. */
+    suspend fun addCustomList(url: String, name: String): String? = withContext(Dispatchers.IO) {
+        val clean = url.trim()
+        // HTTPS only: a list fetched over plain HTTP could be tampered with in transit.
+        if (!clean.startsWith("https://")) return@withContext "Enter an https:// URL"
+        if (customLists().any { it.url == clean }) return@withContext "That list is already added"
+        val bytes = runCatching { download(clean) }.getOrElse { return@withContext it.message ?: "Download failed" }
+        val head = String(bytes, 0, minOf(bytes.size, 512)).trimStart()
+        if (head.startsWith("<")) return@withContext "That URL returned a web page, not a filter list"
+        val rules = countRules(bytes)
+        if (rules == 0) return@withContext "No filter rules found at that URL"
+        val id = "custom-" + Integer.toHexString(clean.hashCode())
+        listFile(id).writeBytes(bytes)
+        saveMeta(id, rules, bytes.size.toLong())
+        val list = FilterList(id, name.trim().ifEmpty { clean.toUri().host ?: clean }, clean, clean,
+            FilterList.Category.Custom, custom = true)
+        prefs.edit {
+            putString(KEY_CUSTOM, FilterList.customListToJson(customLists() + list))
+            putStringSet(KEY_LISTS_ENABLED, enabledIds() + id)
+        }
+        publish()
+        null
+    }
+
+    fun removeCustomList(id: String) {
+        listFile(id).delete()
+        prefs.edit {
+            putString(KEY_CUSTOM, FilterList.customListToJson(customLists().filter { it.id != id }))
+            putStringSet(KEY_LISTS_ENABLED, enabledIds() - id)
+            remove("meta_$id")
+        }
+        publish()
+    }
+
+    /** Re-download every enabled list, then rebuild the engine. */
+    suspend fun updateLists(context: Context): Boolean = rebuild(context, refresh = true)
+
+    /** Rebuild the engine from the enabled lists, downloading only lists not cached yet. */
+    suspend fun applyListChanges(context: Context): Boolean = rebuild(context, refresh = false)
+
+    /** Weekly background refresh on unmetered networks. */
+    suspend fun maybeAutoUpdate(context: Context, enabled: Boolean) {
+        if (!enabled || _state.value.updating) return
+        val last = prefs.getLong(KEY_UPDATED, 0)
+        if (System.currentTimeMillis() - last < AUTO_UPDATE_INTERVAL) return
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+        if (cm == null || cm.activeNetwork == null || cm.isActiveNetworkMetered) return
+        updateLists(context)
+    }
+
+    private suspend fun rebuild(context: Context, refresh: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (_state.value.updating) return@withContext false
         _state.value = _state.value.copy(updating = true, lastError = null)
+        val failed = mutableListOf<String>()
         val result = runCatching {
-            val lists = LIST_URLS.map { download(it) }
-            val resources = download(RESOURCES_URL)
-            check(NativeShield.compileLists(lists.toTypedArray())) { "compile failed" }
-            File(dir, "resources.json").writeBytes(resources)
-            NativeShield.loadResources(resources)
+            val wanted = allLists().filter { it.id in enabledIds() }
+            val texts = mutableListOf<ByteArray>()
+            val included = mutableSetOf<String>()
+            for (list in wanted) {
+                val file = listFile(list.id)
+                if (refresh || !file.isFile) {
+                    runCatching { download(list.url) }
+                        .onSuccess { file.writeBytes(it); saveMeta(list.id, countRules(it), it.size.toLong()) }
+                        .onFailure { failed += list.name }
+                }
+                if (file.isFile) {
+                    texts += file.readBytes()
+                    included += list.id
+                }
+            }
+            check(texts.isNotEmpty()) { "No filter lists could be downloaded" }
+            val resources = if (refresh) runCatching { download(RESOURCES_URL) }.getOrNull() else null
+            check(NativeShield.compileLists(texts.toTypedArray())) { "compile failed" }
+            if (resources != null) File(dir, "resources.json").writeBytes(resources)
+            loadResources(context)
             val tmp = File(dir, "engine.dat.tmp")
             tmp.writeBytes(NativeShield.serialize())
             tmp.renameTo(File(dir, "engine.dat"))
-            prefs.edit { putLong(KEY_UPDATED, System.currentTimeMillis()) }
+            prefs.edit {
+                putStringSet(KEY_LISTS_COMPILED, included)
+                if (refresh) putLong(KEY_UPDATED, System.currentTimeMillis())
+            }
             ready = true
         }
-        result.exceptionOrNull()?.let { Log.w(TAG, "list update failed", it) }
-        _state.value = _state.value.copy(updating = false, lastError = result.exceptionOrNull()?.message)
+        result.exceptionOrNull()?.let { Log.w(TAG, "list rebuild failed", it) }
+        val error = result.exceptionOrNull()?.message
+            ?: failed.takeIf { it.isNotEmpty() }?.let { "Couldn't download: ${it.joinToString()}" }
+        _state.value = _state.value.copy(updating = false, lastError = error)
         publish()
         result.isSuccess
     }
 
+    /** Count non-comment, non-blank lines (approximate rule count). */
+    private fun countRules(bytes: ByteArray): Int {
+        var count = 0
+        var atLineStart = true
+        for (b in bytes) {
+            val c = b.toInt()
+            if (c == '\n'.code) { atLineStart = true; continue }
+            if (!atLineStart || c == ' '.code || c == '\t'.code || c == '\r'.code) continue
+            atLineStart = false
+            if (c != '!'.code && c != '['.code) count++
+        }
+        return count
+    }
+
+    private fun saveMeta(id: String, rules: Int, bytes: Long) {
+        prefs.edit { putString("meta_$id", "$rules|${System.currentTimeMillis()}|$bytes") }
+    }
+
+    private fun readMeta(): Map<String, ListMeta> = allLists().mapNotNull { list ->
+        val parts = prefs.getString("meta_${list.id}", null)?.split('|') ?: return@mapNotNull null
+        runCatching { list.id to ListMeta(parts[0].toInt(), parts[1].toLong(), parts[2].toLong()) }.getOrNull()
+    }.toMap()
+
     private fun download(url: String): ByteArray {
         val conn = URI(url).toURL().openConnection() as HttpURLConnection
+        check(url.startsWith("https://")) { "Refusing non-HTTPS download" }
+        conn.instanceFollowRedirects = true // HttpURLConnection never follows https -> http
         conn.connectTimeout = 20_000
         conn.readTimeout = 60_000
         try {
             check(conn.responseCode == 200) { "HTTP ${conn.responseCode} for $url" }
-            return conn.inputStream.use { it.readBytes() }
+            check(conn.url.protocol == "https") { "Redirected away from HTTPS" }
+            // Guard against absurdly large responses (largest known list is ~15 MB).
+            val limit = 64L * 1024 * 1024
+            check(conn.contentLengthLong <= limit) { "List too large" }
+            return conn.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
+                    check(total <= limit) { "List too large" }
+                    out.write(buf, 0, n)
+                }
+                out.toByteArray()
+            }
         } finally {
             conn.disconnect()
         }
@@ -151,6 +286,8 @@ object Shield {
 
     /** Whether shields apply on this host (global toggle and per-site allowlist). */
     fun activeFor(host: String?): Boolean = ready && enabled && (host == null || host !in allowlist)
+
+    fun allowlistedSites(): Set<String> = allowlist
 
     fun setSiteAllowed(host: String, allowed: Boolean) {
         allowlist = if (allowed) allowlist + host else allowlist - host
@@ -176,6 +313,10 @@ object Shield {
             allowlist = allowlist,
             listsUpdatedAt = prefs.getLong(KEY_UPDATED, 0),
             totalBlocked = totalBlocked.get(),
+            lists = allLists(),
+            enabledLists = enabledIds(),
+            compiledLists = compiledIds(),
+            listMeta = readMeta(),
         )
     }
 

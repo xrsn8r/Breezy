@@ -2,4 +2,9 @@
     <style name="Theme.Breezy" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/background</item>
     </style>
+
+    <!-- Contexts for WebViews: isLightTheme drives prefers-color-scheme and algorithmic
+         darkening (API 29+). -->
+    <style name="Theme.Breezy.Web.Light" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Breezy.Web.Dark" parent="android:Theme.Material.NoActionBar" />
 </resources>

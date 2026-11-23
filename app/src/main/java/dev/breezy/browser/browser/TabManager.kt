@@ -53,6 +53,21 @@ class TabManager(private val context: Context, private val host: TabHost) {
         current = null
     }
 
+    /** Rebuild every WebView (e.g. after toggling dark web pages), keeping each tab's URL. */
+    fun recreateAll() {
+        if (tabs.isEmpty()) return
+        val selected = tabs.indexOf(current).coerceAtLeast(0)
+        val urls = tabs.map { it.url }
+        closeAll()
+        urls.forEachIndexed { i, url ->
+            val tab = BrowserTab(context, host)
+            tabs.add(tab)
+            if (url.isNotEmpty()) tab.deferLoad(url)
+            if (i != selected) tab.onPause()
+        }
+        select(tabs[selected])
+    }
+
     fun save() {
         val urls = JSONArray()
         tabs.forEach { urls.put(it.url) }

@@ -95,6 +95,17 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SwipeVertical
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import dev.breezy.browser.AppSettings
 import androidx.core.net.toUri
 import dev.breezy.browser.adblock.Shield
 import dev.breezy.browser.browser.BrowserTab
@@ -102,77 +113,6 @@ import dev.breezy.browser.browser.UrlInput
 import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
-
-// --- Toolbar ---------------------------------------------------------------------------------
-
-@Composable
-fun ToolbarContent(
-    tab: BrowserTab,
-    tabCount: Int,
-    shieldsActive: Boolean,
-    onShield: () -> Unit,
-    onAddress: () -> Unit,
-    onTabs: () -> Unit,
-    onMenu: () -> Unit,
-) {
-    IconButton(onClick = onShield) {
-        BadgedBox(badge = {
-            if (shieldsActive && tab.blockedCount > 0) {
-                Badge { Text(if (tab.blockedCount > 99) "99+" else tab.blockedCount.toString()) }
-            }
-        }) {
-            Icon(
-                if (shieldsActive) Icons.Rounded.Shield else Icons.Rounded.RemoveModerator,
-                contentDescription = "Shields",
-            )
-        }
-    }
-
-    Row(
-        modifier = Modifier
-            .widthIn(min = 96.dp, max = 168.dp)
-            .height(40.dp)
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onAddress)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val secure = UrlInput.isSecure(tab.url)
-        if (tab.url.isNotEmpty()) {
-            Icon(
-                if (secure) Icons.Rounded.Lock else Icons.Rounded.Language,
-                contentDescription = if (secure) "Secure" else "Not secure",
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-        }
-        Text(
-            text = UrlInput.display(tab.url).ifEmpty { "Search" },
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-
-    IconButton(onClick = onTabs) {
-        Box(
-            Modifier
-                .size(22.dp)
-                .border(2.dp, MaterialTheme.colorScheme.onPrimaryContainer, RoundedCornerShape(7.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                if (tabCount > 99) ":D" else tabCount.toString(),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-
-    IconButton(onClick = onMenu) {
-        Icon(Icons.Rounded.MoreVert, contentDescription = "Menu")
-    }
-}
 
 // --- Home page -------------------------------------------------------------------------------
 
@@ -305,10 +245,10 @@ fun Omnibox(
                 if (query.isNotEmpty()) {
                     item {
                         val resolved = UrlInput.resolve(query)
-                        val isSearch = resolved.startsWith(UrlInput.SEARCH)
+                        val isSearch = UrlInput.isSearch(resolved)
                         ListItem(
                             headlineContent = { Text(if (isSearch) "Search “$query”" else resolved, maxLines = 1) },
-                            supportingContent = { Text(if (isSearch) "DuckDuckGo" else "Open address") },
+                            supportingContent = { Text(if (isSearch) AppSettings.searchEngine.label else "Open address") },
                             leadingContent = {
                                 Icon(if (isSearch) Icons.Rounded.Search else Icons.Rounded.Language, null)
                             },
@@ -427,6 +367,7 @@ fun ShieldSheet(
     onSiteToggle: (host: String, on: Boolean) -> Unit,
     onGlobalToggle: (Boolean) -> Unit,
     onUpdateLists: () -> Unit,
+    onManageLists: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val host = remember(tab.url) { tab.url.toUri().host }
@@ -524,6 +465,7 @@ fun ShieldSheet(
                     }
                 },
             )
+            TextButton(onClick = onManageLists) { Text("Manage filter lists") }
             Text(
                 "Powered by Brave's adblock-rust engine",
                 style = MaterialTheme.typography.labelSmall,
@@ -536,7 +478,15 @@ fun ShieldSheet(
 // --- Menu ------------------------------------------------------------------------------------
 
 @Composable
-fun MenuSheet(tab: BrowserTab, onNewTab: () -> Unit, onShare: () -> Unit, onDismiss: () -> Unit) {
+fun MenuSheet(
+    tab: BrowserTab,
+    onNewTab: () -> Unit,
+    onShare: () -> Unit,
+    onSettings: () -> Unit,
+    onUnlockScrolling: () -> Unit,
+    onDiagnostics: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             // Connected nav buttons: back · forward · reload · share
@@ -578,6 +528,43 @@ fun MenuSheet(tab: BrowserTab, onNewTab: () -> Unit, onShare: () -> Unit, onDism
                 leadingContent = { Icon(Icons.Rounded.DesktopWindows, null) },
                 trailingContent = { Switch(checked = tab.desktopMode, onCheckedChange = { tab.toggleDesktopMode() }) },
             )
+            ListItem(
+                headlineContent = { Text("Unlock scrolling") },
+                supportingContent = { Text("For pages stuck behind a hidden pop-up") },
+                leadingContent = { Icon(Icons.Rounded.SwipeVertical, null) },
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onUnlockScrolling),
+            )
+            ListItem(
+                headlineContent = { Text("Page diagnostics") },
+                leadingContent = { Icon(Icons.Rounded.BugReport, null) },
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onDiagnostics),
+            )
+            ListItem(
+                headlineContent = { Text("Settings") },
+                supportingContent = { Text("Filter lists, search engine, dark mode") },
+                leadingContent = { Icon(Icons.Rounded.Settings, null) },
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onSettings),
+            )
         }
     }
+}
+
+@Composable
+fun DiagnosticsDialog(report: String, onDismiss: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Page diagnostics") },
+        text = {
+            Text(
+                report,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            )
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            TextButton(onClick = { clipboard.setText(AnnotatedString(report)) }) { Text("Copy") }
+        },
+    )
 }

@@ -35,6 +35,36 @@ adblock-rust's serialized format (`assets/adblock/engine.dat`). On device the en
 deserialized in milliseconds instead of parsing ~4 MB of filter text. "Update filter lists" in the
 shield sheet recompiles on-device and caches the result.
 
+## Features
+
+- **Settings → Filter lists**: toggle a catalog of lists (EasyList, EasyPrivacy, uBlock filters,
+  privacy, cookie notices, annoyances, badware, URLhaus, AdGuard Mobile, Peter Lowe, and fix lists)
+  or add any list by HTTPS URL. Lists are cached on the device, so "Apply" only downloads what's new.
+  Lists auto-update weekly on Wi-Fi.
+- **Dark web pages** (default on): WebViews get a dark-themed context, so sites see
+  `prefers-color-scheme: dark` and anything without a dark style is darkened automatically.
+- **Frosted, movable toolbar**: long-press and drag it up or down, and the position is remembered. The
+  blur is real backdrop blur on Android 16+ (Haze) and a translucent tint on older versions.
+- **Scroll-lock repair**: pages left locked by a consent dialog or paywall that never rendered (or
+  was dismissed) get unlocked automatically. The menu also has **Unlock scrolling** and
+  **Page diagnostics**.
+- **Search engine**: Startpage by default, with DuckDuckGo, Brave Search and Google available.
+- **Google Sans Flex** typeface, using a rounded cut for headings.
+
+## Security
+
+Web content runs in the system WebView (Chromium's sandboxed renderer, updated through the Play
+Store). Breezy additionally:
+- Enables Safe Browsing, blocks mixed content, and blocks third-party cookies.
+- Disables file and content access from pages, and denies site permission prompts
+  (camera, location) by default.
+- Blocks pop-ups that weren't triggered by a user gesture.
+- Accepts only http(s) links from other apps. `intent:` links open with their component and
+  selector stripped.
+- Excludes all app data from cloud backup and device transfer.
+- Downloads filter lists over HTTPS only, with a size cap, and sanitizes download file names.
+- Only allows WebView remote debugging in debug builds.
+
 ## Building
 
 Requirements: JDK 17+, Android SDK (compileSdk 37.2, NDK 28.2.13676358), Rust plus `cargo-ndk`:
@@ -66,3 +96,6 @@ signed with a throwaway debug key, which means each release can't install over t
 EasyList, EasyPrivacy, uBlock Origin filters and privacy, Brave unbreak, plus Brave's
 `resources.json`. These lists have their own licenses (GPLv3 / CC BY-SA, among others). Check them
 before you redistribute builds that bundle them.
+
+Google Sans Flex is under the SIL Open Font License 1.1 (`licenses/GoogleSansFlex-OFL.txt`). It is
+bundled as a Latin subset with the weight and roundness axes.

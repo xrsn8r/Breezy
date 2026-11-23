@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.Breezy" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+    <style name="Theme.Breezy.Web.Light" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:isLightTheme">true</item>
+    </style>
+    <style name="Theme.Breezy.Web.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:isLightTheme">false</item>
+    </style>
+</resources>

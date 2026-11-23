@@ -37,9 +37,11 @@
       }
       sheet.replaceSync(rules.join('\n'));
     } catch (e) {
+      var root = document.head || document.documentElement;
+      if (!root) return;
       var style = document.createElement('style');
       style.textContent = rules.join('\n');
-      (document.head || document.documentElement).appendChild(style);
+      root.appendChild(style);
     }
   }
   hide(res.hide_selectors);
@@ -83,6 +85,7 @@
     }
   }
   function collectTree(root) {
+    if (!root) return;
     collect(root);
     if (!root.querySelectorAll) return;
     var all = root.querySelectorAll('[id],[class]');
@@ -117,7 +120,8 @@
   // Observe from document start so elements are handled as the parser inserts them.
   var opts = { childList: true, subtree: true };
   if (!res.generichide) { opts.attributes = true; opts.attributeFilter = ['class', 'id']; }
+  // At document start <html> may not exist yet, so observe the document node itself.
   if (!res.generichide) { collectTree(document.documentElement); flush(); }
   if (procedural.length) applyProcedural(document);
-  observer.observe(document.documentElement, opts);
+  observer.observe(document, opts);
 })();

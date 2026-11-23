@@ -66,7 +66,10 @@ class MainActivity : ComponentActivity(), TabHost {
     }
 
     private fun intentUrl(intent: Intent?): String? = when (intent?.action) {
-        Intent.ACTION_VIEW -> intent.dataString
+        // Only web links from other apps: never javascript:, file:, content: or intent: URIs.
+        Intent.ACTION_VIEW -> intent.dataString?.takeIf {
+            it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true)
+        }
         Intent.ACTION_WEB_SEARCH, Intent.ACTION_SEARCH ->
             intent.getStringExtra("query")?.let(UrlInput::resolve)
         Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let(UrlInput::resolve)

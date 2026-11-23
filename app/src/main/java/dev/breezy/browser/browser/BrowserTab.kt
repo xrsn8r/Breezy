@@ -99,7 +99,11 @@ class BrowserTab(
         private set
 
     /** A downloadable media file noticed on the page (network request or <video>/<audio> src). */
-    data class DetectedMedia(val url: String, val kind: Kind, val pageTitle: String, val pageUrl: String) {
+    data class DetectedMedia(
+        val url: String, val kind: Kind, val pageTitle: String, val pageUrl: String,
+        /** Headers the page sent for this request (Referer/Origin of the embedding player frame). */
+        val requestHeaders: Map<String, String> = emptyMap(),
+    ) {
         enum class Kind { Video, Audio, Hls }
     }
 
@@ -457,10 +461,10 @@ class BrowserTab(
             main.post { blockedCount = 0; detectedMedia.clear(); streamOnlyMedia = false }
             return null // never block top-level navigations
         }
-        if (!Shield.activeFor(pageHost)) { sniffMedia(urlString, request.requestHeaders["Accept"]); return null }
+        if (!Shield.activeFor(pageHost)) { sniffMedia(urlString, request.requestHeaders); return null }
         val verdict = NativeShield.check(
             urlString, pageUrl, request.requestHeaders["Accept"], false, request.method,
-        ) ?: run { sniffMedia(urlString, request.requestHeaders["Accept"]); return null }
+        ) ?: run { sniffMedia(urlString, request.requestHeaders); return null }
         onBlocked()
         dev.breezy.browser.data.Stats.record(guessType(urlString, request.requestHeaders["Accept"]))
         return if (verdict.isEmpty()) Shield.blockedResponse() else Shield.redirectResponse(verdict)
@@ -662,11 +666,13 @@ class BrowserTab(
     // --- Media detection & downloads ----------------------------------------------------------------
 
     /** Note media files the page requests (called on WebView IO threads). */
-    private fun sniffMedia(url: String, accept: String?) {
+    private fun sniffMedia(url: String, headers: Map<String, String>?) {
+        val accept = headers?.entries?.firstOrNull { it.key.equals("Accept", true) }?.value
         val kind = mediaKind(url, accept) ?: return
         val pageTitleNow = title
         val page = pageUrl
-        main.post { addMedia(DetectedMedia(url, kind, pageTitleNow, page)) }
+        val kept = headers.orEmpty().filterKeys { it.lowercase() in COPIED_HEADERS }
+        main.post { addMedia(DetectedMedia(url, kind, pageTitleNow, page, kept)) }
     }
 
     private fun addMedia(m: DetectedMedia) {
@@ -695,11 +701,26 @@ class BrowserTab(
         }
     }
 
-    /** Headers a download needs to look like the page's own request (cookies, UA, referrer). */
-    fun downloadHeaders(url: String): Map<String, String> = buildMap {
+    /**
+     * Headers a download needs to look like the page's own request (cookies, UA, referrer).
+     * [media]'s captured headers win: players embedded in an iframe (e.g. a third-party video host)
+     * send the frame's Referer/Origin, and their CDNs reject anything else with 403.
+     */
+    fun downloadHeaders(url: String, media: DetectedMedia? = null): Map<String, String> = buildMap {
         put("User-Agent", webView.settings.userAgentString)
         cookieManager().getCookie(url)?.let { put("Cookie", it) }
         if (pageUrl.startsWith("http")) put("Referer", pageUrl)
+        media?.requestHeaders?.forEach { (k, v) ->
+            val name = COPIED_HEADERS_CANONICAL[k.lowercase()] ?: k
+            keys.firstOrNull { it.equals(name, true) }?.let { remove(it) }
+            put(name, v)
+        }
+        // Cross-origin player requests (hls.js uses fetch/XHR) carry an Origin; some CDNs require it.
+        if (keys.none { it.equals("Origin", true) }) {
+            val ref = get("Referer")?.toUri()
+            val target = url.toUri()
+            if (ref?.host != null && ref.host != target.host) put("Origin", "${ref.scheme}://${ref.host}" + (if (ref.port > 0) ":${ref.port}" else ""))
+        }
     }
 
     private fun safeName(name: String) = name.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trimStart('.').take(120).ifEmpty { "download" }
@@ -949,6 +970,8 @@ class BrowserTab(
     }
 
     companion object {
+        private val COPIED_HEADERS_CANONICAL = mapOf("referer" to "Referer", "origin" to "Origin", "user-agent" to "User-Agent", "authorization" to "Authorization")
+        private val COPIED_HEADERS = COPIED_HEADERS_CANONICAL.keys
         private var nextId = 1L
         private const val PICKER = "breezy/picker.js"
         private const val PAGE = "breezy/page.js"

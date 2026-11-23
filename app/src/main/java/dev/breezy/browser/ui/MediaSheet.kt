@@ -70,7 +70,7 @@ fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Un
         for (m in media) {
             if (m.url in probes) continue
             probes[m.url] = Probe.Loading
-            launch { probes[m.url] = probe(m, tab.downloadHeaders(m.url), context) }
+            launch { probes[m.url] = probe(m, tab.downloadHeaders(m.url, m), context) }
         }
     }
 
@@ -108,7 +108,7 @@ fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Un
                             trailingContent = {
                                 FilledTonalIconButton(onClick = {
                                     val name = downloadName(m, opt.extension)
-                                    Downloads.enqueue(opt.url, name, opt.mime, tab.downloadHeaders(opt.url), opt.kind)
+                                    Downloads.enqueue(opt.url, name, opt.mime, tab.downloadHeaders(opt.url, m), opt.kind)
                                     onStarted(name)
                                 }) { Icon(Icons.Rounded.Download, "Download") }
                             },
@@ -175,5 +175,13 @@ private suspend fun probe(m: DetectedMedia, headers: Map<String, String>, contex
                 Probe.Ready(listOf(MediaOption(fileLabel(m), "$sizeText · ${mime.substringAfter('/')} · ${UrlInput.display(m.url)}",
                     m.url, DownloadKind.File, mime, ext, video)))
             }
-        }.getOrElse { Probe.Failed(it.message ?: "Couldn't read this media") }
+        }.getOrElse {
+            val msg = it.message.orEmpty()
+            Probe.Failed(when {
+                msg == "HTTP 403" || msg == "HTTP 401" -> "The server refused ($msg). Play the video for a few seconds, then reopen this."
+                msg == "HTTP 404" || msg == "HTTP 410" -> "Link expired ($msg). Reload the page and play again."
+                msg.isNotEmpty() -> msg
+                else -> "Couldn't read this media"
+            })
+        }
     }

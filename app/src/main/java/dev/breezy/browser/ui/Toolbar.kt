@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +118,11 @@ fun MovableBrowserBar(
         )
         val lift by animateFloatAsState(if (dragging) 1.05f else 1f, label = "barLift")
         val haptics = LocalHapticFeedback.current
+        // The gesture coroutine below outlives recompositions (it's keyed only on `travel`), so it
+        // must read the *current* tab and callback, not the ones captured when it started.
+        // Otherwise copying could grab the link of a tab that was switched away from or closed.
+        val currentTab by rememberUpdatedState(tab)
+        val currentOnCopyLink by rememberUpdatedState(onCopyLink)
         var rowBounds by remember { mutableStateOf(Rect.Zero) }
         var pillBounds by remember { mutableStateOf(Rect.Zero) }
 
@@ -166,8 +172,8 @@ fun MovableBrowserBar(
                         if (moved) {
                             dragging = false
                             AppSettings.updateToolbarPosition(position)
-                        } else if (onAddressPill && tab != null && tab.url.isNotEmpty()) {
-                            onCopyLink()
+                        } else if (onAddressPill && currentTab?.url?.isNotEmpty() == true) {
+                            currentOnCopyLink()
                         }
                     }
                 },

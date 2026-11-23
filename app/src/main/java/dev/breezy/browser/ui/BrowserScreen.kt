@@ -172,7 +172,8 @@ fun BrowserScreen(
                 onMenu = { menuOpen = true },
                 onSearch = { omniboxOpen = true },
                 onCopyLink = {
-                    val url = tab?.url ?: return@MovableBrowserBar
+                    // Read the selected tab at copy time, not when this lambda was created.
+                    val url = tabs.current?.url?.takeIf { it.isNotEmpty() } ?: return@MovableBrowserBar
                     val cm = context.getSystemService(ClipboardManager::class.java)
                     cm.setPrimaryClip(ClipData.newPlainText("Link", url))
                     // Android 13+ shows its own clipboard confirmation.

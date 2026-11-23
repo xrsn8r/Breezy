@@ -46,6 +46,16 @@ shield sheet recompiles on-device and caches the result.
   - **Forget this site** and **Clear data on exit**.
   - **Private tabs**: each gets its own WebView profile, which is deleted when the tab closes, and
     nothing is written to history.
+  - **Secure DNS (DNS over HTTPS)**: Cloudflare, Quad9, Mullvad, AdGuard, Google or a custom
+    endpoint, with an optional strict mode. WebView can't take a custom resolver, so Breezy runs a
+    small proxy on `127.0.0.1` that resolves hostnames over DoH and tunnels connections unchanged
+    (TLS stays end to end). Breezy's own downloads and list updates use it too.
+- **Download manager**: downloads split into up to 8 parallel connections (HTTP range requests),
+  with pause, resume (also after a restart), retry and share. Files are saved to `Download/Breezy`.
+- **Media detection**: the toolbar's download button shows a badge when a page plays a video or audio
+  file or an HLS stream. The sheet lists sizes and qualities. HLS streams (including AES-128) are
+  downloaded segment by segment in parallel and saved as one file. DRM-protected and stream-only
+  players (like YouTube) can't be downloaded.
 - **Shield stats**: blocked requests per day for the last 14 days, plus an estimate of data saved.
 - **Undo close tab** from a snackbar.
 - **Reader mode** using Mozilla Readability (Apache-2.0, `licenses/Readability-LICENSE.md`), styled

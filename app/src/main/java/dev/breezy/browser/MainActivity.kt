@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity(), TabHost {
         super.onCreate(savedInstanceState)
 
         tabs = TabManager(this, this)
+        if (intent.getBooleanExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_DOWNLOADS, false)) tabs.showDownloads = true
         val incoming = intentUrl(intent)
         if (AppSettings.clearOnExit) {
             // Covers the case where the process was killed before onDestroy could clear.
@@ -128,6 +129,7 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.getBooleanExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_DOWNLOADS, false)) tabs.showDownloads = true
         intentUrl(intent)?.let { tabs.newTab(it) }
     }
 
@@ -195,10 +197,10 @@ class MainActivity : ComponentActivity(), TabHost {
         super.onDestroy()
     }
 
-    private fun ensureNotificationPermission() {
+    private fun ensureNotificationPermission(force: Boolean = false) {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
-            !getSharedPreferences("settings", MODE_PRIVATE).getBoolean("asked_notifications", false)
+            (force || !getSharedPreferences("settings", MODE_PRIVATE).getBoolean("asked_notifications", false))
         ) {
             getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("asked_notifications", true).apply()
             // Asked once; the media notification needs it on Android 13+.
@@ -283,6 +285,11 @@ class MainActivity : ComponentActivity(), TabHost {
             onResult(if (permissions.all { "LOCATION" in it }) granted.any { it } else granted.all { it })
         }
         permissionLauncher.launch(missing.toTypedArray())
+    }
+
+    override fun onDownloadStarted(name: String) {
+        ensureNotificationPermission(force = true)
+        android.widget.Toast.makeText(this, "Downloading $name", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     override fun onMediaStateChanged(tab: BrowserTab) {

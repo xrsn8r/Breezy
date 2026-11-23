@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RemoveModerator
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -106,6 +107,8 @@ fun MovableBrowserBar(
     onMenu: () -> Unit,
     onSearch: () -> Unit,
     onCopyLink: () -> Unit,
+    mediaCount: Int = 0,
+    onMedia: () -> Unit = {},
 ) {
     BoxWithConstraints(
         Modifier
@@ -194,6 +197,8 @@ fun MovableBrowserBar(
             FrostedToolbar(
                 hazeState = hazeState,
                 onPillPositioned = { pillBounds = it },
+                mediaCount = mediaCount,
+                onMedia = onMedia,
                 expanded = expanded || dragging,
                 tab = tab,
                 tabCount = tabCount,
@@ -219,6 +224,8 @@ fun MovableBrowserBar(
 private fun FrostedToolbar(
     hazeState: HazeState,
     onPillPositioned: (Rect) -> Unit,
+    mediaCount: Int,
+    onMedia: () -> Unit,
     expanded: Boolean,
     tab: BrowserTab?,
     tabCount: Int,
@@ -272,6 +279,14 @@ private fun FrostedToolbar(
                     )
                 }
             }
+            // Appears when the page has media that can be downloaded.
+            if (mediaCount > 0) {
+                IconButton(onClick = onMedia) {
+                    BadgedBox(badge = { if (mediaCount > 1) Badge { Text(mediaCount.toString()) } }) {
+                        Icon(Icons.Rounded.Download, contentDescription = "Download media on this page")
+                    }
+                }
+            }
         },
         trailingContent = {
             IconButton(onClick = onTabs) {
@@ -295,7 +310,7 @@ private fun FrostedToolbar(
     ) {
         Row(
             modifier = Modifier
-                .widthIn(min = 96.dp, max = 168.dp)
+                .widthIn(min = 80.dp, max = if (mediaCount > 0) 120.dp else 168.dp)
                 .height(40.dp)
                 .onGloballyPositioned { onPillPositioned(it.boundsInRoot()) }
                 .clip(CircleShape)

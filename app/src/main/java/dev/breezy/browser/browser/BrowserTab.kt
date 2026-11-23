@@ -1,7 +1,6 @@
 package dev.breezy.browser.browser
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -53,6 +52,7 @@ interface TabHost {
     /** Request Android runtime permissions; result is true if all were granted. */
     fun requestAndroidPermissions(permissions: Array<String>, onResult: (Boolean) -> Unit)
     fun onMediaStateChanged(tab: BrowserTab)
+    fun onDownloadStarted(name: String)
 }
 
 /**
@@ -96,6 +96,18 @@ class BrowserTab(
 
     /** Find-in-page results: active match index (0-based) and total; null when not searching. */
     var findResult by mutableStateOf<Pair<Int, Int>?>(null)
+        private set
+
+    /** A downloadable media file noticed on the page (network request or <video>/<audio> src). */
+    data class DetectedMedia(val url: String, val kind: Kind, val pageTitle: String, val pageUrl: String) {
+        enum class Kind { Video, Audio, Hls }
+    }
+
+    /** Media found on the current page, newest last. Reset on each top-level navigation. */
+    val detectedMedia = androidx.compose.runtime.mutableStateListOf<DetectedMedia>()
+
+    /** The page plays media but only through MediaSource streams (e.g. YouTube): not downloadable. */
+    var streamOnlyMedia by mutableStateOf(false)
         private set
 
     data class MediaState(
@@ -327,6 +339,29 @@ class BrowserTab(
             .put("rate", playbackRate.toDouble())
             .toString()
 
+        /** `[{"src": "...", "tag": "video"|"audio"}, ...]` from page.js; "stream" = MediaSource only. */
+        @JavascriptInterface
+        fun mediaSources(json: String) {
+            val arr = runCatching { org.json.JSONArray(json) }.getOrNull() ?: return
+            main.post {
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val src = o.optString("src")
+                    val tag = o.optString("tag")
+                    when {
+                        src == "stream" -> streamOnlyMedia = true
+                        src.startsWith("http") -> {
+                            val kind = mediaKind(src, null) ?: if (tag == "audio") DetectedMedia.Kind.Audio else DetectedMedia.Kind.Video
+                            addMedia(DetectedMedia(src, kind, title, pageUrl))
+                        }
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun blobChunk(id: String, base64: String, last: Boolean) = onBlobChunk(id, base64, last)
+
         @JavascriptInterface
         fun mediaState(playing: Boolean, title: String, video: Boolean, aspect: Double) {
             main.post {
@@ -419,13 +454,13 @@ class BrowserTab(
             // Record the navigation target first so subresources get the right source URL.
             setPage(urlString)
             pendingBlocked.set(0)
-            main.post { blockedCount = 0 }
+            main.post { blockedCount = 0; detectedMedia.clear(); streamOnlyMedia = false }
             return null // never block top-level navigations
         }
-        if (!Shield.activeFor(pageHost)) return null
+        if (!Shield.activeFor(pageHost)) { sniffMedia(urlString, request.requestHeaders["Accept"]); return null }
         val verdict = NativeShield.check(
             urlString, pageUrl, request.requestHeaders["Accept"], false, request.method,
-        ) ?: return null
+        ) ?: run { sniffMedia(urlString, request.requestHeaders["Accept"]); return null }
         onBlocked()
         dev.breezy.browser.data.Stats.record(guessType(urlString, request.requestHeaders["Accept"]))
         return if (verdict.isEmpty()) Shield.blockedResponse() else Shield.redirectResponse(verdict)
@@ -624,25 +659,99 @@ class BrowserTab(
         override fun onHideCustomView() = host.exitFullscreen()
     }
 
+    // --- Media detection & downloads ----------------------------------------------------------------
+
+    /** Note media files the page requests (called on WebView IO threads). */
+    private fun sniffMedia(url: String, accept: String?) {
+        val kind = mediaKind(url, accept) ?: return
+        val pageTitleNow = title
+        val page = pageUrl
+        main.post { addMedia(DetectedMedia(url, kind, pageTitleNow, page)) }
+    }
+
+    private fun addMedia(m: DetectedMedia) {
+        // Dedupe by URL without query (players re-request the same file with range params).
+        val key = m.url.substringBefore('?')
+        if (detectedMedia.any { it.url.substringBefore('?') == key }) return
+        // HLS: once a playlist is known, its variant/rendition playlists add nothing new.
+        if (m.kind == DetectedMedia.Kind.Hls && detectedMedia.count { it.kind == DetectedMedia.Kind.Hls } >= 3) return
+        if (detectedMedia.size >= 20) detectedMedia.removeAt(0)
+        detectedMedia += m
+    }
+
+    private fun mediaKind(url: String, accept: String?): DetectedMedia.Kind? {
+        val host = runCatching { url.toUri().host }.getOrNull().orEmpty()
+        // YouTube serves video as range-requested DASH chunks of separate audio/video tracks.
+        if (host.endsWith("googlevideo.com")) return null
+        val path = url.substringBefore('?').substringBefore('#').lowercase()
+        val ext = path.substringAfterLast('.', "")
+        return when {
+            ext == "m3u8" -> DetectedMedia.Kind.Hls
+            ext in setOf("mp4", "m4v", "webm", "mov", "mkv") -> DetectedMedia.Kind.Video
+            ext in setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav") -> DetectedMedia.Kind.Audio
+            accept?.startsWith("video/") == true -> DetectedMedia.Kind.Video
+            accept?.startsWith("audio/") == true -> DetectedMedia.Kind.Audio
+            else -> null
+        }
+    }
+
+    /** Headers a download needs to look like the page's own request (cookies, UA, referrer). */
+    fun downloadHeaders(url: String): Map<String, String> = buildMap {
+        put("User-Agent", webView.settings.userAgentString)
+        cookieManager().getCookie(url)?.let { put("Cookie", it) }
+        if (pageUrl.startsWith("http")) put("Referer", pageUrl)
+    }
+
+    private fun safeName(name: String) = name.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trimStart('.').take(120).ifEmpty { "download" }
+
     private fun download(context: Context, url: String, userAgent: String, disposition: String?, mime: String?) {
+        val name = safeName(URLUtil.guessFileName(url, disposition, mime))
+        val type = mime?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
         runCatching {
-            // Strip path separators/control chars so a server can't steer the file location.
-            val name = URLUtil.guessFileName(url, disposition, mime)
-                .replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_")
-                .trimStart('.')
-                .ifEmpty { "download" }
-            if (!url.startsWith("http://") && !url.startsWith("https://")) error("unsupported scheme")
-            val request = DownloadManager.Request(url.toUri())
-                .setMimeType(mime)
-                .addRequestHeader("User-Agent", userAgent)
-                .addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url) ?: "")
-                .setTitle(name)
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
-            context.getSystemService(DownloadManager::class.java).enqueue(request)
-            Toast.makeText(context, "Downloading $name", Toast.LENGTH_SHORT).show()
+            when {
+                url.startsWith("http://") || url.startsWith("https://") -> {
+                    dev.breezy.browser.downloads.Downloads.enqueue(url, name, type, downloadHeaders(url) + ("User-Agent" to userAgent))
+                }
+                url.startsWith("data:") -> {
+                    val (dataMime, bytes) = dev.breezy.browser.downloads.Downloads.decodeDataUrl(url) ?: error("bad data URL")
+                    dev.breezy.browser.downloads.Downloads.saveBytes(name, dataMime, bytes)
+                }
+                url.startsWith("blob:") -> fetchBlob(url, name, type)
+                else -> error("unsupported")
+            }
+            host.onDownloadStarted(name)
         }.onFailure {
-            Toast.makeText(context, "Download failed", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Couldn't download $name", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // blob: URLs only exist inside the page, so read them there and stream them out in chunks.
+    private val blobParts = HashMap<String, java.io.ByteArrayOutputStream>()
+
+    private fun fetchBlob(url: String, name: String, mime: String) {
+        val id = java.util.UUID.randomUUID().toString()
+        synchronized(blobParts) { blobParts[id] = java.io.ByteArrayOutputStream() }
+        val js = """(async function(){try{var b=await (await fetch(${org.json.JSONObject.quote(url)})).blob();
+            var CH=393216;for(var o=0;o<b.size;o+=CH){var buf=new Uint8Array(await b.slice(o,o+CH).arrayBuffer());
+            var s='';for(var i=0;i<buf.length;i+=8192){s+=String.fromCharCode.apply(null,buf.subarray(i,i+8192));}
+            BreezyPage.blobChunk('$id',btoa(s),false);}BreezyPage.blobChunk('$id','',true);}
+            catch(e){BreezyPage.blobChunk('$id','',true);}})()"""
+        pendingBlobNames[id] = name to mime
+        webView.evaluateJavascript(js, null)
+    }
+
+    private val pendingBlobNames = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+    private fun onBlobChunk(id: String, base64: String, last: Boolean) {
+        val out = synchronized(blobParts) { blobParts[id] } ?: return
+        if (base64.isNotEmpty()) out.write(android.util.Base64.decode(base64, android.util.Base64.DEFAULT))
+        if (!last) return
+        synchronized(blobParts) { blobParts.remove(id) }
+        val (name, mime) = pendingBlobNames.remove(id) ?: return
+        val bytes = out.toByteArray()
+        main.post {
+            if (bytes.isEmpty()) Toast.makeText(webView.context, "Couldn't download $name", Toast.LENGTH_SHORT).show()
+            else appScope.launch { dev.breezy.browser.downloads.Downloads.saveBytes(name, mime, bytes) }
         }
     }
 

@@ -22,10 +22,31 @@
     list.sort(function (a, b) { return (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight); });
     return list[0] || null;
   }
+  // Downloadable sources of <video>/<audio> elements; MediaSource (blob:) players are reported as
+  // "stream" so the UI can explain why they can't be saved directly.
+  var reportedSources = {};
+  function reportSources() {
+    var out = [];
+    mediaElements().forEach(function (m) {
+      var srcs = [m.currentSrc || m.src];
+      var sources = m.querySelectorAll('source[src]');
+      for (var i = 0; i < sources.length; i++) srcs.push(sources[i].src);
+      srcs.forEach(function (src) {
+        if (!src) return;
+        var key = /^blob:/.test(src) ? 'stream' : src;
+        if (reportedSources[key]) return;
+        reportedSources[key] = true;
+        out.push({ src: key, tag: m.tagName.toLowerCase() });
+      });
+    });
+    if (out.length) { try { bridge.mediaSources(JSON.stringify(out)); } catch (e) {} }
+  }
+
   var last = '', timer = 0;
   function report() {
     clearTimeout(timer);
     timer = setTimeout(function () {
+      reportSources();
       var el = playingElement();
       var isVideo = !!(el && el.tagName === 'VIDEO' && el.videoWidth > 0);
       var aspect = isVideo ? el.videoWidth / el.videoHeight : 16 / 9;
@@ -43,6 +64,9 @@
       report();
     }, true);
   });
+  // Also catch videos that haven't started playing yet.
+  window.addEventListener('load', function () { reportSources(); setTimeout(reportSources, 2500); });
+
   Object.defineProperty(window, '__breezyMedia', {
     value: {
       play: function () {

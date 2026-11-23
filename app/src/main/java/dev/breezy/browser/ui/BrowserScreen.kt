@@ -68,6 +68,7 @@ fun BrowserScreen(
     var textSizeOpen by remember { mutableStateOf(false) }
     var speedOpen by remember { mutableStateOf(false) }
     var article by remember { mutableStateOf<BrowserTab.Article?>(null) }
+    var mediaOpen by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
     var shieldOpen by rememberSaveable { mutableStateOf(false) }
@@ -79,7 +80,7 @@ fun BrowserScreen(
 
     val showHome = tab == null || tab.url.isEmpty()
     val host = remember(tab?.url) { tab?.url?.toUri()?.host }
-    val overlayOpen = omniboxOpen || settingsOpen || historyOpen || article != null
+    val overlayOpen = omniboxOpen || settingsOpen || historyOpen || article != null || tabs.showDownloads
     val finding = tab?.findResult != null
 
     // Back: page history first; then close the tab (falls back to another tab or the home page);
@@ -177,6 +178,8 @@ fun BrowserScreen(
                 onTabs = { tabsOpen = true },
                 onMenu = { menuOpen = true },
                 onSearch = { omniboxOpen = true },
+                mediaCount = tab?.detectedMedia?.size ?: 0,
+                onMedia = { mediaOpen = true },
                 onCopyLink = {
                     // Read the selected tab at copy time, not when this lambda was created.
                     val url = tabs.current?.url?.takeIf { it.isNotEmpty() } ?: return@MovableBrowserBar
@@ -212,6 +215,15 @@ fun BrowserScreen(
                 exit = fadeOut() + slideOutVertically { it / 6 },
             ) {
                 article?.let { ReaderScreen(it, onClose = { article = null }) }
+            }
+
+            // --- Downloads ---------------------------------------------------------------------
+            AnimatedVisibility(
+                visible = tabs.showDownloads,
+                enter = fadeIn() + slideInHorizontally { it / 4 },
+                exit = fadeOut() + slideOutHorizontally { it / 4 },
+            ) {
+                DownloadsScreen(onDismiss = { tabs.showDownloads = false })
             }
 
             // --- History -----------------------------------------------------------------------
@@ -319,6 +331,7 @@ fun BrowserScreen(
             onNewPrivateTab = { menuOpen = false; openNewTab(private = true) },
             onHistory = { menuOpen = false; historyOpen = true },
             onShields = { menuOpen = false; shieldOpen = true },
+            onDownloads = { menuOpen = false; tabs.showDownloads = true },
             onDismiss = { menuOpen = false },
         )
     }
@@ -348,6 +361,17 @@ fun BrowserScreen(
             duration = SnackbarDuration.Short,
         )
         if (result == SnackbarResult.ActionPerformed) tabs.undoClose()
+    }
+
+    if (mediaOpen && tab != null) {
+        MediaSheet(
+            tab = tab,
+            onStarted = { name ->
+                mediaOpen = false
+                Toast.makeText(context, "Downloading $name", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { mediaOpen = false },
+        )
     }
 
     tabs.permissionPrompt?.let { prompt ->

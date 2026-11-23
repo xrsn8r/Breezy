@@ -26,6 +26,9 @@ class TabManager(private val context: Context, private val host: TabHost) {
     data class PermissionPrompt(val host: String, val kinds: List<String>, val onResult: (Boolean, Boolean) -> Unit)
     var permissionPrompt by mutableStateOf<PermissionPrompt?>(null)
 
+    /** Set when the UI should show the Downloads screen (e.g. tapped the download notification). */
+    var showDownloads by mutableStateOf(false)
+
     fun newTab(url: String? = null, select: Boolean = true, private: Boolean = false): BrowserTab {
         val tab = BrowserTab(context, host, isPrivate = private && BrowserTab.multiProfileSupported)
         add(tab, select)

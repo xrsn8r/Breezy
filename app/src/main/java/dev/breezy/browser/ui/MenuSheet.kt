@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FormatSize
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
@@ -84,6 +85,7 @@ fun MenuSheet(
     onNewPrivateTab: () -> Unit,
     onHistory: () -> Unit,
     onShields: () -> Unit,
+    onDownloads: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val onPage = tab != null && tab.url.startsWith("http")
@@ -96,10 +98,11 @@ fun MenuSheet(
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
             // --- Most-used actions --------------------------------------------------------------
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuickAction(Icons.Rounded.Add, "New tab", Modifier.weight(1f), onNewTab)
                 QuickAction(Icons.Rounded.Shield, "Shields", Modifier.weight(1f), onShields)
                 QuickAction(Icons.Rounded.History, "History", Modifier.weight(1f), onHistory)
+                QuickAction(Icons.Rounded.Download, "Downloads", Modifier.weight(1f), onDownloads)
             }
             Spacer(Modifier.height(12.dp))
 

@@ -224,6 +224,10 @@ fun SettingsScreen(
                 }
             }
 
+            // --- Secure DNS --------------------------------------------------------------------------
+            item { SectionHeader("Secure DNS") }
+            item { SecureDnsCard() }
+
             // --- Reading -----------------------------------------------------------------------------
             item { SectionHeader("Reading") }
             item {
@@ -241,6 +245,27 @@ fun SettingsScreen(
                     )
                     ToggleRow("Pull to refresh", "Swipe down at the top of a page to reload it",
                         AppSettings.pullToRefresh, AppSettings::updatePullToRefresh)
+                }
+            }
+
+            // --- Downloads ---------------------------------------------------------------------------
+            item { SectionHeader("Downloads") }
+            item {
+                SettingsCard {
+                    ListItem(
+                        headlineContent = { Text("Connections per download: ${AppSettings.downloadConnections}") },
+                        supportingContent = {
+                            Column {
+                                Text("More connections can be faster on servers that support it. Files are saved to Download/Breezy.")
+                                androidx.compose.material3.Slider(
+                                    value = AppSettings.downloadConnections.toFloat(),
+                                    onValueChange = { AppSettings.updateDownloadConnections(it.roundToInt()) },
+                                    valueRange = 1f..8f, steps = 6,
+                                )
+                            }
+                        },
+                        colors = cardItemColors(),
+                    )
                 }
             }
 
@@ -551,4 +576,69 @@ private fun ToggleRow(title: String, summary: String, checked: Boolean, onChange
         trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
         colors = cardItemColors(),
     )
+}
+
+@Composable
+private fun SecureDnsCard() {
+    val scope = rememberCoroutineScope()
+    var custom by remember { mutableStateOf(AppSettings.customDnsUrl) }
+    var testResult by remember { mutableStateOf<String?>(null) }
+    val supported = dev.breezy.browser.data.NetworkPrivacy.supported
+    fun apply(provider: dev.breezy.browser.data.DnsProvider, strict: Boolean = AppSettings.dnsStrict) {
+        AppSettings.updateDns(provider, custom, strict)
+        dev.breezy.browser.data.NetworkPrivacy.apply()
+        testResult = null
+    }
+    SettingsCard {
+        Text(
+            if (supported) "Looks up sites over an encrypted connection, so your network can't see or tamper with them."
+            else "Your WebView version doesn't support this. Update Android System WebView.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        dev.breezy.browser.data.DnsProvider.entries.forEach { p ->
+            ListItem(
+                headlineContent = { Text(p.label) },
+                supportingContent = { Text(p.note) },
+                leadingContent = {
+                    androidx.compose.material3.RadioButton(selected = AppSettings.dnsProvider == p, onClick = { apply(p) }, enabled = supported)
+                },
+                colors = cardItemColors(),
+                modifier = Modifier.clickable(enabled = supported) { apply(p) },
+            )
+        }
+        if (AppSettings.dnsProvider == dev.breezy.browser.data.DnsProvider.Custom) {
+            OutlinedTextField(
+                value = custom,
+                onValueChange = { custom = it },
+                label = { Text("DoH URL (https://…/dns-query)") },
+                singleLine = true,
+                isError = custom.isNotBlank() && !custom.startsWith("https://"),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            )
+            TextButton(onClick = { apply(dev.breezy.browser.data.DnsProvider.Custom) }, modifier = Modifier.padding(start = 8.dp)) {
+                Text("Save")
+            }
+        }
+        if (AppSettings.dnsEndpoint != null) {
+            ToggleRow("Strict mode", "Never fall back to your network's DNS if the provider can't be reached",
+                AppSettings.dnsStrict) { apply(AppSettings.dnsProvider, it) }
+            ListItem(
+                headlineContent = { Text("Test connection") },
+                supportingContent = { Text(testResult ?: "Check that the provider answers") },
+                colors = cardItemColors(),
+                modifier = Modifier.clickable {
+                    val url = AppSettings.dnsEndpoint ?: return@clickable
+                    testResult = "Testing…"
+                    scope.launch {
+                        testResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            runCatching { "Working · ${dev.breezy.browser.data.SecureDns.test(url)} ms" }
+                                .getOrElse { "Failed: ${it.message}" }
+                        }
+                    }
+                },
+            )
+        }
+    }
 }

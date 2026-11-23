@@ -75,6 +75,13 @@ object AppSettings {
     /** Global default text zoom (percent). */
     var textZoom by mutableIntStateOf(100); private set
     var pullToRefresh by mutableStateOf(true); private set
+    // --- Secure DNS ---
+    var dnsProvider by mutableStateOf(dev.breezy.browser.data.DnsProvider.Off); private set
+    var customDnsUrl by mutableStateOf(""); private set
+    var dnsStrict by mutableStateOf(false); private set
+    // --- Downloads ---
+    /** Parallel connections per download (when the server supports byte ranges). */
+    var downloadConnections by mutableIntStateOf(4); private set
     // --- Media ---
     var backgroundPlay by mutableStateOf(true); private set
     var forceZoom by mutableStateOf(false); private set
@@ -104,6 +111,11 @@ object AppSettings {
         pullToRefresh = prefs.getBoolean("pull_to_refresh", true)
         backgroundPlay = prefs.getBoolean("background_play", true)
         forceZoom = prefs.getBoolean("force_zoom", false)
+        downloadConnections = prefs.getInt("download_connections", 4)
+        dnsProvider = runCatching { dev.breezy.browser.data.DnsProvider.valueOf(prefs.getString("dns_provider", "Off")!!) }
+            .getOrDefault(dev.breezy.browser.data.DnsProvider.Off)
+        customDnsUrl = prefs.getString("dns_custom_url", "")!!
+        dnsStrict = prefs.getBoolean("dns_strict", false)
         searchEngine = runCatching { SearchEngine.valueOf(prefs.getString("search_engine", null)!!) }
             .getOrDefault(SearchEngine.Startpage)
         toolbarPosition = prefs.getFloat("toolbar_position", 0f)
@@ -164,6 +176,20 @@ object AppSettings {
     fun updateTextZoom(v: Int) { textZoom = v.coerceIn(50, 300); prefs.edit { putInt("text_zoom", textZoom) } }
     fun updatePullToRefresh(v: Boolean) { pullToRefresh = v; prefs.edit { putBoolean("pull_to_refresh", v) } }
     fun updateBackgroundPlay(v: Boolean) { backgroundPlay = v; prefs.edit { putBoolean("background_play", v) } }
+    fun updateDns(provider: dev.breezy.browser.data.DnsProvider, custom: String = customDnsUrl, strict: Boolean = dnsStrict) {
+        dnsProvider = provider; customDnsUrl = custom.trim(); dnsStrict = strict
+        prefs.edit { putString("dns_provider", provider.name); putString("dns_custom_url", customDnsUrl); putBoolean("dns_strict", strict) }
+    }
+
+    /** The DoH endpoint in effect, or null when secure DNS is off. */
+    val dnsEndpoint: String?
+        get() = when (dnsProvider) {
+            dev.breezy.browser.data.DnsProvider.Off -> null
+            dev.breezy.browser.data.DnsProvider.Custom -> customDnsUrl.takeIf { it.startsWith("https://") }
+            else -> dnsProvider.url
+        }
+
+    fun updateDownloadConnections(v: Int) { downloadConnections = v.coerceIn(1, 8); prefs.edit { putInt("download_connections", downloadConnections) } }
     fun updateForceZoom(v: Boolean) { forceZoom = v; prefs.edit { putBoolean("force_zoom", v) } }
 
     fun updateIdentifyAsChrome(value: Boolean) {

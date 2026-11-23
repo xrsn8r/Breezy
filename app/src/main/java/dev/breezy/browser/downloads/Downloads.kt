@@ -199,16 +199,44 @@ object Downloads {
         return conn
     }
 
-    private inline fun <T> retrying(times: Int = 5, block: (attempt: Int) -> T): T {
+    /**
+     * Run [block], retrying network errors with backoff. Throttling (429/503) waits out the
+     * server's Retry-After (or an exponential pause) for every request to that host, and gets more
+     * attempts; permanent errors (403, 404, ...) fail at once. [onThrottled] lets callers shed
+     * parallel connections.
+     */
+    private inline fun <T> retrying(
+        url: String? = null,
+        times: Int = 5,
+        onThrottled: () -> Unit = {},
+        block: (attempt: Int) -> T,
+    ): T {
+        val host = url?.let { runCatching { java.net.URI(it).host }.getOrNull() }
         var last: Exception? = null
-        repeat(times) { attempt ->
+        var throttles = 0
+        var attempt = 0
+        while (attempt < times || (last as? HttpStatusException)?.throttled == true && throttles < 12) {
+            if (host != null) HostCooldown.waitFor(host)
             try {
                 return block(attempt)
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: HttpStatusException) {
+                last = e
+                if (e.permanent) throw e
+                if (e.throttled) {
+                    throttles++
+                    onThrottled()
+                    val wait = (e.retryAfterMs ?: (1_000L shl minOf(throttles, 5))).coerceIn(1_000L, 60_000L)
+                    if (host != null) HostCooldown.hit(host, wait) else Thread.sleep(wait)
+                    continue
+                }
+                Thread.sleep(minOf(8_000L, 500L shl attempt))
+                attempt++
             } catch (e: IOException) {
                 last = e
                 Thread.sleep(minOf(8_000L, 500L shl attempt))
+                attempt++
             }
         }
         throw last ?: IOException("Download failed")
@@ -227,7 +255,7 @@ object Downloads {
 
         // First run: probe size and range support, then split into segments.
         if (job.segments.isEmpty()) {
-            val (total, ranges) = retrying { probe(job) }
+            val (total, ranges) = retrying(job.url) { probe(job) }
             val count = if (ranges && total > 0) {
                 AppSettings.downloadConnections.coerceIn(1, 8).coerceAtMost(maxOf(1, (total / MIN_SEGMENT).toInt()))
             } else 1
@@ -288,8 +316,8 @@ object Downloads {
     private fun probe(job: DownloadJob): Pair<Long, Boolean> {
         val conn = connect(job.url, job.headers, "bytes=0-")
         try {
+            HttpStatusException.check(conn)
             val code = conn.responseCode
-            if (code >= 400) throw IOException("HTTP $code")
             val total = conn.getHeaderField("Content-Range")?.substringAfterLast('/')?.toLongOrNull()
                 ?: conn.contentLengthLong
             return total to (code == 206)
@@ -300,14 +328,14 @@ object Downloads {
 
     private suspend fun downloadSegment(job: DownloadJob, seg: Segment, done: AtomicLong, handle: Storage.Handle) {
         if (seg.complete) return
-        retrying { _ ->
+        retrying(job.url) { _ ->
             val offset = seg.start + done.get()
             if (seg.end >= 0 && offset > seg.end) return
             val range = if (job.resumable) "bytes=$offset-${if (seg.end >= 0) seg.end else ""}" else null
             val conn = connect(job.url, job.headers, range)
             try {
+                HttpStatusException.check(conn)
                 val code = conn.responseCode
-                if (code >= 400) throw IOException("HTTP $code")
                 if (range != null && code != 206) throw IOException("Server stopped supporting resume")
                 conn.inputStream.use { input ->
                     val buf = ByteArray(64 * 1024)
@@ -335,7 +363,7 @@ object Downloads {
 
     private suspend fun runHls(id: Long) = coroutineScope {
         var job = get(id)!!
-        val playlist = retrying { Hls.fetchMedia(job.url, job.headers) }
+        val playlist = retrying(job.url) { Hls.fetchMedia(job.url, job.headers) }
         if (job.uri == null) {
             val uri = Storage.create(app, job.fileName, job.mime)
             mutate(id) { it.copy(uri = uri.toString(), hlsTotal = playlist.segments.size) }
@@ -349,19 +377,23 @@ object Downloads {
             var position = job.downloaded
             handle.channel.truncate(position)
             if (job.hlsWritten == 0 && playlist.initSegment != null) {
-                val init = retrying { Hls.fetchBytes(playlist.initSegment, job.headers) }
+                val init = retrying(playlist.initSegment) { Hls.fetchBytes(playlist.initSegment, job.headers) }
                 handle.channel.write(ByteBuffer.wrap(init), position)
                 position += init.size
                 mutate(id) { it.copy(downloaded = position) }
             }
-            val parallel = Semaphore(AppSettings.downloadConnections.coerceIn(1, 8))
+            val parallel = AdaptiveLimiter(AppSettings.downloadConnections.coerceIn(1, 8))
             val start = job.hlsWritten
             val pending = (start until playlist.segments.size).map { i ->
                 async {
                     parallel.withPermit {
                         val file = File(tmp, "$i.seg")
                         if (!file.exists()) {
-                            val bytes = retrying { Hls.fetchSegment(playlist, i, job.headers) }
+                            var throttled = false
+                            val bytes = retrying(playlist.segments[i], times = 6, onThrottled = { throttled = true }) {
+                                Hls.fetchSegment(playlist, i, job.headers)
+                            }
+                            if (throttled) parallel.onThrottled() else parallel.onSuccess()
                             File(tmp, "$i.part").apply { writeBytes(bytes); renameTo(file) }
                         }
                         file

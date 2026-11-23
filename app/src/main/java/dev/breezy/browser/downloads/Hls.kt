@@ -44,7 +44,7 @@ object Hls {
         conn.connectTimeout = 15_000; conn.readTimeout = 30_000
         headers.forEach { (k, v) -> if (v.isNotEmpty()) conn.setRequestProperty(k, v) }
         try {
-            if (conn.responseCode >= 400) throw IOException("HTTP ${conn.responseCode}")
+            HttpStatusException.check(conn)
             return conn.inputStream.use { it.readBytes().decodeToString() }
         } finally {
             conn.disconnect()
@@ -56,7 +56,7 @@ object Hls {
         conn.connectTimeout = 15_000; conn.readTimeout = 30_000
         headers.forEach { (k, v) -> if (v.isNotEmpty()) conn.setRequestProperty(k, v) }
         try {
-            if (conn.responseCode >= 400) throw IOException("HTTP ${conn.responseCode}")
+            HttpStatusException.check(conn)
             return conn.inputStream.use { it.readBytes() }
         } finally {
             conn.disconnect()

@@ -71,6 +71,7 @@ import dev.breezy.browser.adblock.UserFilters
 import androidx.compose.ui.text.font.FontFamily
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -184,6 +185,78 @@ fun SettingsScreen(
                             TextButton(onClick = { AppSettings.updateToolbarPosition(0f) },
                                 enabled = AppSettings.toolbarPosition != 0f) { Text("Reset") }
                         },
+                        colors = cardItemColors(),
+                    )
+                }
+            }
+
+            // --- Privacy -----------------------------------------------------------------------------
+            item { SectionHeader("Privacy") }
+            item {
+                var confirmClear by remember { mutableStateOf(false) }
+                SettingsCard {
+                    ToggleRow("HTTPS-only mode", "Upgrade every site to HTTPS and warn before using an insecure connection",
+                        AppSettings.httpsOnly, AppSettings::updateHttpsOnly)
+                    ToggleRow("Strip tracking parameters", "Remove utm_*, fbclid, gclid and similar from links you open",
+                        AppSettings.stripTracking, AppSettings::updateStripTracking)
+                    ToggleRow("Search suggestions", "Ask ${AppSettings.searchEngine.label} for suggestions as you type",
+                        AppSettings.searchSuggestions, AppSettings::updateSearchSuggestions)
+                    ToggleRow("Clear data on exit", "Wipe cookies, site data, history and tabs when you leave Breezy",
+                        AppSettings.clearOnExit, AppSettings::updateClearOnExit)
+                    ListItem(
+                        headlineContent = { Text("Clear browsing data now") },
+                        supportingContent = { Text("Cookies, site storage, cache and history") },
+                        colors = cardItemColors(),
+                        modifier = Modifier.clickable { confirmClear = true },
+                    )
+                }
+                if (confirmClear) {
+                    AlertDialog(
+                        onDismissRequest = { confirmClear = false },
+                        title = { Text("Clear browsing data?") },
+                        text = { Text("You'll be signed out of sites. Open tabs stay open.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmClear = false
+                                scope.launch { dev.breezy.browser.data.SiteData.clearAll(app) }
+                            }) { Text("Clear", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+                    )
+                }
+            }
+
+            // --- Reading -----------------------------------------------------------------------------
+            item { SectionHeader("Reading") }
+            item {
+                SettingsCard {
+                    ListItem(
+                        headlineContent = { Text("Default text size: ${AppSettings.textZoom}%") },
+                        supportingContent = {
+                            androidx.compose.material3.Slider(
+                                value = AppSettings.textZoom.toFloat(),
+                                onValueChange = { AppSettings.updateTextZoom(((it / 10).roundToInt()) * 10) },
+                                valueRange = 50f..200f, steps = 14,
+                            )
+                        },
+                        colors = cardItemColors(),
+                    )
+                    ToggleRow("Pull to refresh", "Swipe down at the top of a page to reload it",
+                        AppSettings.pullToRefresh, AppSettings::updatePullToRefresh)
+                }
+            }
+
+            // --- Media -------------------------------------------------------------------------------
+            item { SectionHeader("Media") }
+            item {
+                SettingsCard {
+                    ToggleRow("Background play", "Keep audio and video playing with the screen off, with media controls",
+                        AppSettings.backgroundPlay, AppSettings::updateBackgroundPlay)
+                    ToggleRow("Force allow zoom", "Pinch-zoom on sites that try to disable it",
+                        AppSettings.forceZoom, AppSettings::updateForceZoom)
+                    ListItem(
+                        headlineContent = { Text("Picture-in-picture") },
+                        supportingContent = { Text("Leave the app while a video is fullscreen to keep watching in a small window") },
                         colors = cardItemColors(),
                     )
                 }
@@ -483,3 +556,13 @@ private fun SettingsCard(content: @Composable () -> Unit) {
 
 @Composable
 private fun cardItemColors() = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+
+@Composable
+private fun ToggleRow(title: String, summary: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(summary) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
+        colors = cardItemColors(),
+    )
+}

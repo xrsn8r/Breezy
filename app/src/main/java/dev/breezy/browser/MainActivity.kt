@@ -40,6 +40,13 @@ class MainActivity : ComponentActivity(), TabHost {
         override fun handleOnBackPressed() = exitFullscreen()
     }
 
+    private var permissionCallback: ((Map<String, Boolean>) -> Unit)? = null
+    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        permissionCallback?.invoke(result)
+        permissionCallback = null
+    }
+    private var swipeRefresh: androidx.swiperefreshlayout.widget.SwipeRefreshLayout? = null
+
     private val fileChooser = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
         fileCallback = null
@@ -51,7 +58,13 @@ class MainActivity : ComponentActivity(), TabHost {
 
         tabs = TabManager(this, this)
         val incoming = intentUrl(intent)
-        tabs.restore()
+        if (AppSettings.clearOnExit) {
+            // Covers the case where the process was killed before onDestroy could clear.
+            getSharedPreferences("tabs", MODE_PRIVATE).edit().clear().apply()
+            (application as BreezyApp).scope.launch { dev.breezy.browser.data.SiteData.clearAll(applicationContext) }
+        } else {
+            tabs.restore()
+        }
         if (incoming != null) tabs.newTab(incoming)
 
         val ui = ComposeView(this).apply {
@@ -59,7 +72,7 @@ class MainActivity : ComponentActivity(), TabHost {
                 BreezyTheme {
                     BrowserScreen(
                         tabs = tabs,
-                        onNewTab = { url -> tabs.newTab(url) },
+                        onNewTab = { url, private -> tabs.newTab(url, private = private) },
                         onCloseTab = ::closeTab,
                         onShare = ::share,
                         onExit = ::finish,
@@ -72,10 +85,19 @@ class MainActivity : ComponentActivity(), TabHost {
             // The current tab's WebView lives directly in the window, beneath a transparent Compose
             // overlay, so it composites like in any other browser (not through Compose layers).
             val root = FrameLayout(this)
-            root.addView(webHost, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            // Pull-to-refresh wraps a fixed container (the WebView inside it changes with the tab).
+            val refresh = androidx.swiperefreshlayout.widget.SwipeRefreshLayout(this).apply {
+                addView(webHost, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                setOnChildScrollUpCallback { _, _ ->
+                    !AppSettings.pullToRefresh || tabs.current?.webView?.canScrollVertically(-1) != false
+                }
+                setOnRefreshListener { tabs.current?.reload() ?: run { isRefreshing = false } }
+            }
+            swipeRefresh = refresh
+            root.addView(refresh, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             root.addView(ui, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             setContentView(root)
-            ViewCompat.setOnApplyWindowInsetsListener(webHost) { v, insets ->
+            ViewCompat.setOnApplyWindowInsetsListener(refresh) { v, insets ->
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
                 val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
                 v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
@@ -83,6 +105,9 @@ class MainActivity : ComponentActivity(), TabHost {
             }
             lifecycleScope.launch {
                 snapshotFlow { tabs.current }.collect { attachToHost(it) }
+            }
+            lifecycleScope.launch {
+                snapshotFlow { tabs.current?.loading == true }.collect { loading -> if (!loading) refresh.isRefreshing = false }
             }
         } else {
             setContentView(ui)
@@ -123,22 +148,73 @@ class MainActivity : ComponentActivity(), TabHost {
         else -> null
     }
 
+    private val keepPlaying: Boolean
+        get() = AppSettings.backgroundPlay && tabs.current?.media?.playing == true
+
     override fun onPause() {
         super.onPause()
-        tabs.current?.onPause()
+        // In picture-in-picture or background play, keep the page running.
+        if (!isInPictureInPictureMode && !keepPlaying) tabs.current?.onPause()
         tabs.save()
         Shield.flush()
+        dev.breezy.browser.data.Stats.flush()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (keepPlaying) {
+            dev.breezy.browser.media.MediaHub.tab = tabs.current
+            ensureNotificationPermission()
+            dev.breezy.browser.media.MediaPlaybackService.update(this)
+        }
     }
 
     override fun onResume() {
         super.onResume()
         tabs.current?.onResume()
+        dev.breezy.browser.media.MediaPlaybackService.stop(this)
+        dev.breezy.browser.media.MediaHub.tab = null
     }
 
     override fun onDestroy() {
-        if (isFinishing) tabs.save()
+        dev.breezy.browser.media.MediaPlaybackService.stop(this)
+        if (isFinishing) {
+            if (AppSettings.clearOnExit) {
+                getSharedPreferences("tabs", MODE_PRIVATE).edit().clear().apply()
+                (application as BreezyApp).scope.launch { dev.breezy.browser.data.SiteData.clearAll(applicationContext) }
+            } else {
+                tabs.save()
+            }
+        }
         tabs.closeAll()
         super.onDestroy()
+    }
+
+    private fun ensureNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            !getSharedPreferences("settings", MODE_PRIVATE).getBoolean("asked_notifications", false)
+        ) {
+            getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("asked_notifications", true).apply()
+            // Asked once; the media notification needs it on Android 13+.
+            requestAndroidPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS)) {}
+        }
+    }
+
+    // --- Picture-in-picture -----------------------------------------------------------------------
+
+    private fun pipParams(enabled: Boolean): android.app.PictureInPictureParams {
+        val b = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9))
+        if (android.os.Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(enabled).setSeamlessResizeEnabled(true)
+        return b.build()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Pre-Android 12: enter PiP manually when leaving during fullscreen video.
+        if (fullscreenView != null && android.os.Build.VERSION.SDK_INT < 31) {
+            runCatching { enterPictureInPictureMode(pipParams(true)) }
+        }
     }
 
     private fun share(url: String) {
@@ -151,8 +227,36 @@ class MainActivity : ComponentActivity(), TabHost {
     override fun openInNewTab(tab: BrowserTab) = tabs.add(tab)
 
     override fun closeTab(tab: BrowserTab) {
-        // Closing the last tab returns to the home page rather than leaving the app.
-        tabs.close(tab)
+        // Closing the last tab returns to the home page rather than leaving the app. The tab is
+        // kept briefly so the "Undo" snackbar can bring it back.
+        tabs.closeWithUndo(tab)
+    }
+
+    override fun askSitePermission(host: String, kinds: List<String>, onResult: (Boolean, Boolean) -> Unit) {
+        tabs.permissionPrompt = TabManager.PermissionPrompt(host, kinds) { allow, remember ->
+            tabs.permissionPrompt = null
+            onResult(allow, remember)
+        }
+    }
+
+    override fun requestAndroidPermissions(permissions: Array<String>, onResult: (Boolean) -> Unit) {
+        val missing = permissions.filter {
+            checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) { onResult(true); return }
+        permissionCallback?.invoke(emptyMap())
+        permissionCallback = { _ ->
+            val granted = permissions.map { checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+            // Location is granted if either coarse or fine was; everything else needs all.
+            onResult(if (permissions.all { "LOCATION" in it }) granted.any { it } else granted.all { it })
+        }
+        permissionLauncher.launch(missing.toTypedArray())
+    }
+
+    override fun onMediaStateChanged(tab: BrowserTab) {
+        if (dev.breezy.browser.media.MediaHub.tab === tab && !hasWindowFocus()) {
+            dev.breezy.browser.media.MediaPlaybackService.update(this)
+        }
     }
 
     override fun showFileChooser(
@@ -176,6 +280,8 @@ class MainActivity : ComponentActivity(), TabHost {
         )
         // Videos are almost always landscape: rotate like Chrome does for fullscreen video.
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // Leaving the app during fullscreen video drops into picture-in-picture.
+        runCatching { setPictureInPictureParams(pipParams(true)) }
         // Re-add so it sits on top of Compose's back handlers.
         fullscreenBack.remove()
         onBackPressedDispatcher.addCallback(this, fullscreenBack)
@@ -192,6 +298,7 @@ class MainActivity : ComponentActivity(), TabHost {
         fullscreenView = null
         fullscreenBack.isEnabled = false
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        runCatching { setPictureInPictureParams(pipParams(false)) }
         WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
         onFullscreenExit?.invoke()
         onFullscreenExit = null

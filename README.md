@@ -37,6 +37,28 @@ shield sheet recompiles on-device and caches the result.
 
 ## Features
 
+- **Privacy**:
+  - **HTTPS-only mode**: upgrades sites to HTTPS and warns before falling back to HTTP.
+  - **Tracking-parameter stripping**: removes `utm_*`, `fbclid`, `gclid` and similar from links.
+  - **Per-site controls in the Shields sheet**: JavaScript, cookies, and camera, microphone and
+    location (Ask/Allow/Block).
+  - **Forget this site** and **Clear data on exit**.
+  - **Private tabs**: each gets its own WebView profile, which is deleted when the tab closes, and
+    nothing is written to history.
+- **Shield stats**: blocked requests per day for the last 14 days, plus an estimate of data saved.
+- **Undo close tab** from a snackbar.
+- **Reader mode** using Mozilla Readability (Apache-2.0, `licenses/Readability-LICENSE.md`), styled
+  with the Material theme and Google Sans Flex. It renders in a WebView with JavaScript disabled.
+- **Text size**: set per site or as a global default. **Pull to refresh**.
+- **Media**:
+  - Picture-in-picture for fullscreen video.
+  - Background play, with a media notification and play/pause controls.
+  - Playback speed.
+  - Force allow zoom.
+- **History**: searchable, plus **address-bar suggestions** from history and from the search
+  engine (Startpage, DuckDuckGo or Google).
+- **Find in page**.
+
 - **Block element**: Menu → Block element, then tap anything on the page. You can widen or narrow the
   selection, edit the CSS selector, and preview it before blocking. Rules are saved under
   Settings → My filters and apply instantly, without an engine rebuild.

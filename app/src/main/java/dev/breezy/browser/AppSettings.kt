@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,11 +12,17 @@ import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class SearchEngine(val label: String, val queryUrl: String, val queryParam: String) {
-    Startpage("Startpage", "https://www.startpage.com/sp/search?query=", "query"),
-    DuckDuckGo("DuckDuckGo", "https://duckduckgo.com/?q=", "q"),
-    Brave("Brave Search", "https://search.brave.com/search?q=", "q"),
-    Google("Google", "https://www.google.com/search?q=", "q");
+enum class SearchEngine(
+    val label: String,
+    val queryUrl: String,
+    val queryParam: String,
+    /** OpenSearch-JSON suggestions endpoint (`["q", ["s1", ...]]`), or null if none we can use. */
+    val suggestUrl: String?,
+) {
+    Startpage("Startpage", "https://www.startpage.com/sp/search?query=", "query", "https://www.startpage.com/osuggestions?q="),
+    DuckDuckGo("DuckDuckGo", "https://duckduckgo.com/?q=", "q", "https://duckduckgo.com/ac/?type=list&q="),
+    Brave("Brave Search", "https://search.brave.com/search?q=", "q", null),
+    Google("Google", "https://www.google.com/search?q=", "q", "https://suggestqueries.google.com/complete/search?client=firefox&q=");
 
     /** Host + path prefix used to recognise result pages, e.g. "www.startpage.com/sp/search". */
     val resultPrefix: String get() = queryUrl.substringAfter("://").substringBefore('?')
@@ -68,6 +75,18 @@ object AppSettings {
     var nativePageHost by mutableStateOf(true)
         private set
 
+    // --- Privacy / browsing ---
+    var httpsOnly by mutableStateOf(true); private set
+    var stripTracking by mutableStateOf(true); private set
+    var clearOnExit by mutableStateOf(false); private set
+    var searchSuggestions by mutableStateOf(true); private set
+    /** Global default text zoom (percent). */
+    var textZoom by mutableIntStateOf(100); private set
+    var pullToRefresh by mutableStateOf(true); private set
+    // --- Media ---
+    var backgroundPlay by mutableStateOf(true); private set
+    var forceZoom by mutableStateOf(false); private set
+
     /** Present as mobile Chrome rather than an Android WebView (sign-in compatibility). */
     var identifyAsChrome by mutableStateOf(true)
         private set
@@ -86,6 +105,14 @@ object AppSettings {
         frostedToolbar = prefs.getBoolean("frosted_toolbar", false)
         identifyAsChrome = prefs.getBoolean("identify_as_chrome", true)
         nativePageHost = prefs.getBoolean("native_page_host", true)
+        httpsOnly = prefs.getBoolean("https_only", true)
+        stripTracking = prefs.getBoolean("strip_tracking", true)
+        clearOnExit = prefs.getBoolean("clear_on_exit", false)
+        searchSuggestions = prefs.getBoolean("search_suggestions", true)
+        textZoom = prefs.getInt("text_zoom", 100)
+        pullToRefresh = prefs.getBoolean("pull_to_refresh", true)
+        backgroundPlay = prefs.getBoolean("background_play", true)
+        forceZoom = prefs.getBoolean("force_zoom", false)
         searchEngine = runCatching { SearchEngine.valueOf(prefs.getString("search_engine", null)!!) }
             .getOrDefault(SearchEngine.Startpage)
         toolbarPosition = prefs.getFloat("toolbar_position", 0f)
@@ -138,6 +165,15 @@ object AppSettings {
         frostedToolbar = value
         prefs.edit { putBoolean("frosted_toolbar", value) }
     }
+
+    fun updateHttpsOnly(v: Boolean) { httpsOnly = v; prefs.edit { putBoolean("https_only", v) } }
+    fun updateStripTracking(v: Boolean) { stripTracking = v; prefs.edit { putBoolean("strip_tracking", v) } }
+    fun updateClearOnExit(v: Boolean) { clearOnExit = v; prefs.edit { putBoolean("clear_on_exit", v) } }
+    fun updateSearchSuggestions(v: Boolean) { searchSuggestions = v; prefs.edit { putBoolean("search_suggestions", v) } }
+    fun updateTextZoom(v: Int) { textZoom = v.coerceIn(50, 300); prefs.edit { putInt("text_zoom", textZoom) } }
+    fun updatePullToRefresh(v: Boolean) { pullToRefresh = v; prefs.edit { putBoolean("pull_to_refresh", v) } }
+    fun updateBackgroundPlay(v: Boolean) { backgroundPlay = v; prefs.edit { putBoolean("background_play", v) } }
+    fun updateForceZoom(v: Boolean) { forceZoom = v; prefs.edit { putBoolean("force_zoom", v) } }
 
     fun updateNativePageHost(value: Boolean) {
         nativePageHost = value

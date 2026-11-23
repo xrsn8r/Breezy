@@ -39,6 +39,8 @@ import dev.breezy.browser.adblock.NativeShield
 import dev.breezy.browser.adblock.Shield
 import dev.breezy.browser.adblock.UserFilters
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.launch
+import dev.breezy.browser.data.SitePermission
 
 /** Callbacks a tab needs from the hosting activity. */
 interface TabHost {
@@ -47,6 +49,11 @@ interface TabHost {
     fun showFileChooser(callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams): Boolean
     fun enterFullscreen(view: View, onExit: () -> Unit)
     fun exitFullscreen()
+    /** Ask the user whether [host] may use [kinds] ("camera", "microphone", "location"). */
+    fun askSitePermission(host: String, kinds: List<String>, onResult: (allow: Boolean, remember: Boolean) -> Unit)
+    /** Request Android runtime permissions; result is true if all were granted. */
+    fun requestAndroidPermissions(permissions: Array<String>, onResult: (Boolean) -> Unit)
+    fun onMediaStateChanged(tab: BrowserTab)
 }
 
 /**
@@ -54,7 +61,15 @@ interface TabHost {
  * Network requests are routed through Brave's adblock engine in [shouldInterceptRequest].
  */
 @SuppressLint("SetJavaScriptEnabled")
-class BrowserTab(context: Context, private val host: TabHost, val id: Long = nextId++) {
+class BrowserTab(
+    context: Context,
+    private val host: TabHost,
+    /** Private tabs use their own WebView profile (cookies/storage wiped on close) and no history. */
+    val isPrivate: Boolean = false,
+    val id: Long = nextId++,
+) {
+    private val appContext = context.applicationContext
+    private val profileName: String? = if (isPrivate && multiProfileSupported) "private-$id-${System.nanoTime()}" else null
 
     var url by mutableStateOf("")
         private set
@@ -76,6 +91,20 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         private set
 
     /** Element picker state while "Block element" is active; null otherwise. */
+    /** Set when an HTTPS-only upgrade failed: the insecure URL the user may choose to continue to. */
+    var httpsFailure by mutableStateOf<String?>(null)
+        private set
+
+    /** Find-in-page results: active match index (0-based) and total; null when not searching. */
+    var findResult by mutableStateOf<Pair<Int, Int>?>(null)
+        private set
+
+    data class MediaState(val playing: Boolean = false, val title: String = "", val hasMedia: Boolean = false)
+    var media by mutableStateOf(MediaState())
+        private set
+    var playbackRate by mutableFloatStateOf(1f)
+        private set
+
     /** Whether the toolbar should be expanded: collapses on scroll down, returns on scroll up. */
     var chromeVisible by mutableStateOf(true)
 
@@ -109,6 +138,10 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     )
 
     val webView: WebView = WebView(webContext).apply {
+        // A private tab's profile must be set before the WebView is used for anything else.
+        profileName?.let { name ->
+            runCatching { WebViewCompat.setProfile(this, name) }
+        }
         // Avoid a white flash before the first paint in dark mode.
         setBackgroundColor(if (dark) 0xFF121212.toInt() else android.graphics.Color.WHITE)
         settings.apply {
@@ -134,7 +167,8 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, dark && AppSettings.forceDarkAllSites)
         }
-        CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
+        cookieManager().setAcceptThirdPartyCookies(this, false)
+        setFindListener { active, count, done -> if (done) findResult = if (count > 0) active to count else 0 to 0 }
         isScrollbarFadingEnabled = true
         setOnScrollChangeListener { _, _, y, _, oldY ->
             if (y > oldY + 12) chromeVisible = false
@@ -145,6 +179,7 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         if (AppSettings.identifyAsChrome) presentAsChrome(settings)
         addJavascriptInterface(CosmeticBridge(), "BreezyShield")
         addJavascriptInterface(PickerBridge(), "BreezyPicker")
+        addJavascriptInterface(PageBridge(), "BreezyPage")
         installCosmeticScript(this)
 
         webViewClient = Client()
@@ -159,8 +194,135 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     }
 
     fun load(input: String) {
-        runCatching { prepareScriptlets(input.toUri()) }
-        webView.loadUrl(input)
+        val target = rewriteNavigation(input) ?: input
+        runCatching { prepareScriptlets(target.toUri()) }
+        applySiteSettings(runCatching { target.toUri().host }.getOrNull())
+        httpsFailure = null
+        webView.loadUrl(target)
+    }
+
+    // --- Navigation rewriting: HTTPS-only + tracking parameters ---------------------------------
+
+    /** Hosts the user chose to visit over plain HTTP this session (HTTPS-only fallback). */
+    private val httpAllowed = HashSet<String>()
+    private var upgradeHost: String? = null
+    private var upgradeCount = 0
+    private var upgradeAt = 0L
+    private var upgradedFrom: String? = null
+
+    /** The URL to load instead of [url] (upgraded and/or cleaned), or null to load it as is. */
+    private fun rewriteNavigation(url: String): String? {
+        var out = url
+        if (AppSettings.stripTracking) out = dev.breezy.browser.data.Tracking.clean(out)
+        if (AppSettings.httpsOnly && out.startsWith("http://", ignoreCase = true)) {
+            val host = runCatching { out.toUri().host }.getOrNull()
+            if (host != null && host !in httpAllowed && !isLocalHost(host)) {
+                val now = System.currentTimeMillis()
+                if (host == upgradeHost && now - upgradeAt < 5_000) upgradeCount++ else upgradeCount = 0
+                upgradeHost = host; upgradeAt = now
+                if (upgradeCount >= 3) {
+                    // The site keeps redirecting HTTPS back to HTTP: it has no working HTTPS.
+                    httpsFailure = out
+                    return "about:blank"
+                }
+                upgradedFrom = out
+                out = "https://" + out.substring(7)
+            }
+        }
+        return out.takeIf { it != url }
+    }
+
+    private fun isLocalHost(host: String) = host == "localhost" || host.endsWith(".local") ||
+        host.matches(Regex("^(127|10|192\\.168|172\\.(1[6-9]|2\\d|3[01]))\\..*")) || host.startsWith("[")
+
+    /** User accepted the HTTPS-only warning: load the insecure URL and allow its host this session. */
+    fun continueInsecure() {
+        val url = httpsFailure ?: return
+        runCatching { url.toUri().host }.getOrNull()?.let(httpAllowed::add)
+        httpsFailure = null
+        upgradedFrom = null
+        webView.loadUrl(url)
+    }
+
+    fun dismissHttpsFailure() {
+        httpsFailure = null
+        if (webView.canGoBack()) webView.goBack() else host.closeTab(this)
+    }
+
+    // --- Per-site settings ------------------------------------------------------------------------
+
+    private fun cookieManager(): CookieManager =
+        profileName?.let { runCatching { androidx.webkit.ProfileStore.getInstance().getProfile(it)?.cookieManager }.getOrNull() }
+            ?: CookieManager.getInstance()
+
+    /** Apply JavaScript / cookie / text-size settings for [host] (call before navigating there). */
+    fun applySiteSettings(host: String? = pageHost) {
+        val site = dev.breezy.browser.data.SiteSettings.get(host)
+        webView.settings.javaScriptEnabled = site.javascript
+        webView.settings.textZoom = site.textZoom ?: AppSettings.textZoom
+        // CookieManager's accept flag is global, so it follows the tab being shown.
+        cookieManager().setAcceptCookie(site.cookies)
+    }
+
+    // --- Find in page -----------------------------------------------------------------------------
+
+    fun find(query: String) {
+        if (query.isEmpty()) { webView.clearMatches(); findResult = 0 to 0 } else webView.findAllAsync(query)
+    }
+
+    fun findNext(forward: Boolean) = webView.findNext(forward)
+
+    fun stopFind() {
+        webView.clearMatches()
+        findResult = null
+    }
+
+    fun startFind() { findResult = 0 to 0 }
+
+    // --- Reader mode --------------------------------------------------------------------------------
+
+    data class Article(val title: String, val byline: String, val siteName: String, val html: String, val url: String)
+
+    /** Run Mozilla Readability on a copy of the page; null if no article was found. */
+    fun extractArticle(onResult: (Article?) -> Unit) {
+        val lib = asset(webView.context, READABILITY)
+        val js = "(function(){" + lib + "\n;try{var a=new Readability(document.cloneNode(true)).parse();" +
+            "return a?JSON.stringify({t:a.title||'',b:a.byline||'',s:a.siteName||'',c:a.content||''}):null;}catch(e){return null;}})()"
+        webView.evaluateJavascript(js) { raw ->
+            val json = runCatching { org.json.JSONTokener(raw).nextValue() as? String }.getOrNull()
+            val o = json?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            onResult(o?.takeIf { it.optString("c").length > 200 }?.let {
+                Article(it.optString("t").ifBlank { title }, it.optString("b"), it.optString("s"), it.optString("c"), url)
+            })
+        }
+    }
+
+    // --- Media --------------------------------------------------------------------------------------
+
+    fun mediaPlay() = webView.evaluateJavascript("window.__breezyMedia&&__breezyMedia.play()", null)
+    fun mediaPause() = webView.evaluateJavascript("window.__breezyMedia&&__breezyMedia.pause()", null)
+
+    fun changePlaybackRate(rate: Float) {
+        playbackRate = rate
+        webView.evaluateJavascript("window.__breezyMedia&&__breezyMedia.setRate($rate)", null)
+    }
+
+    /** Receives media events and config requests from assets/breezy/page.js. */
+    private inner class PageBridge {
+        @JavascriptInterface
+        fun config(): String = org.json.JSONObject()
+            .put("bgPlay", AppSettings.backgroundPlay)
+            .put("forceZoom", AppSettings.forceZoom)
+            .put("rate", playbackRate.toDouble())
+            .toString()
+
+        @JavascriptInterface
+        fun mediaState(playing: Boolean, title: String) {
+            main.post {
+                media = MediaState(playing = playing, title = title.ifBlank { this@BrowserTab.title }, hasMedia = true)
+                host.onMediaStateChanged(this@BrowserTab)
+            }
+        }
     }
 
     fun reload() = webView.reload()
@@ -189,6 +351,7 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     fun onPause() = webView.onPause()
     fun onResume() {
         webView.onResume()
+        applySiteSettings()
         deferredUrl?.let { deferredUrl = null; load(it) }
     }
 
@@ -197,9 +360,14 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         webView.stopLoading()
         webView.removeJavascriptInterface("BreezyShield")
         webView.removeJavascriptInterface("BreezyPicker")
+        webView.removeJavascriptInterface("BreezyPage")
         scriptlets.values.forEach { it?.remove() }
         scriptlets.clear()
         webView.destroy()
+        // Wipe the private profile (cookies, storage, cache) once its WebView is gone.
+        profileName?.let { name ->
+            main.postDelayed({ runCatching { androidx.webkit.ProfileStore.getInstance().deleteProfile(name) } }, 500)
+        }
     }
 
     private fun updateNav() {
@@ -239,7 +407,23 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
             urlString, pageUrl, request.requestHeaders["Accept"], false, request.method,
         ) ?: return null
         onBlocked()
+        dev.breezy.browser.data.Stats.record(guessType(urlString, request.requestHeaders["Accept"]))
         return if (verdict.isEmpty()) Shield.blockedResponse() else Shield.redirectResponse(verdict)
+    }
+
+    /** Rough resource type for the data-saved estimate (the precise one is inferred natively). */
+    private fun guessType(url: String, accept: String?): String {
+        val path = url.substringBefore('?').substringBefore('#').lowercase()
+        return when {
+            path.endsWith(".js") -> "script"
+            path.endsWith(".css") -> "stylesheet"
+            path.endsWith(".mp4") || path.endsWith(".webm") || path.endsWith(".m3u8") -> "media"
+            path.endsWith(".woff2") || path.endsWith(".woff") || path.endsWith(".ttf") -> "font"
+            accept?.startsWith("image/") == true || path.endsWith(".png") || path.endsWith(".jpg") ||
+                path.endsWith(".gif") || path.endsWith(".webp") || path.endsWith(".svg") -> "image"
+            accept?.startsWith("text/html") == true -> "subdocument"
+            else -> "xmlhttprequest"
+        }
     }
 
     /** JS interface used by assets/adblock/cosmetic.js. Called on a WebView binder thread. */
@@ -283,14 +467,31 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         }
     }
 
-    private inner class Client : WebViewClient() {
+    private val appScope get() = (appContext as dev.breezy.browser.BreezyApp).scope
+
+    private fun maybeHttpsFailed(request: WebResourceRequest) {
+        if (!request.isForMainFrame) return
+        val from = upgradedFrom ?: return
+        if (request.url.host == upgradeHost && request.url.scheme == "https") httpsFailure = from
+    }
+
+    private inner class Client : androidx.webkit.WebViewClientCompat() {
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) = intercept(request)
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val scheme = request.url.scheme ?: return false
             if (scheme == "http" || scheme == "https") {
-                // Register this site's scriptlets before its document is created (also on redirects).
-                if (request.isForMainFrame) prepareScriptlets(request.url)
+                if (request.isForMainFrame) {
+                    val original = request.url.toString()
+                    val rewritten = if (request.method.equals("GET", true)) rewriteNavigation(original) else null
+                    if (rewritten != null) {
+                        load(rewritten)
+                        return true
+                    }
+                    // Register this site's scriptlets before its document is created (also on redirects).
+                    prepareScriptlets(request.url)
+                    applySiteSettings(request.url.host)
+                }
                 return false
             }
             if (scheme == "about" || scheme == "data") return false
@@ -314,9 +515,23 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
             this@BrowserTab.favicon = favicon
             loading = true
             updateNav()
+            media = MediaState()
             if (!documentStartScriptSupported) {
                 view.evaluateJavascript(asset(view.context, SCROLL_REPAIR), null)
+                view.evaluateJavascript(asset(view.context, PAGE), null)
                 view.evaluateJavascript(asset(view.context, COSMETIC), null)
+            }
+        }
+
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: androidx.webkit.WebResourceErrorCompat) {
+            super.onReceivedError(view, request, error)
+            maybeHttpsFailed(request)
+        }
+
+        override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
+            handler.cancel()
+            if (upgradedFrom != null && runCatching { error.url.toUri().host }.getOrNull() == upgradeHost) {
+                httpsFailure = upgradedFrom
             }
         }
 
@@ -330,6 +545,9 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
             this@BrowserTab.url = url
             setPage(url)
             updateNav()
+            if (!isPrivate && !isReload && url.startsWith("http")) {
+                appScope.launch { dev.breezy.browser.data.History.record(url, title) }
+            }
         }
     }
 
@@ -340,6 +558,20 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
 
         override fun onReceivedTitle(view: WebView, title: String?) {
             this@BrowserTab.title = title.orEmpty()
+            val u = view.url
+            if (!isPrivate && u != null && !title.isNullOrBlank()) {
+                appScope.launch { dev.breezy.browser.data.History.updateTitle(u, title) }
+            }
+        }
+
+        override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
+            handlePermissionRequest(request)
+        }
+
+        override fun onPermissionRequestCanceled(request: android.webkit.PermissionRequest) = Unit
+
+        override fun onGeolocationPermissionsShowPrompt(origin: String, callback: android.webkit.GeolocationPermissions.Callback) {
+            handleGeolocation(origin, callback)
         }
 
         override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
@@ -424,6 +656,75 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     fun pageText(onResult: (String) -> Unit) {
         webView.evaluateJavascript("document.body ? document.body.innerText : ''") { json ->
             onResult(runCatching { org.json.JSONTokener(json).nextValue() as String }.getOrDefault(""))
+        }
+    }
+
+    // --- Site permissions ------------------------------------------------------------------------
+
+    private fun handlePermissionRequest(request: android.webkit.PermissionRequest) {
+        val site = runCatching { request.origin.host }.getOrNull()
+        if (site == null) { request.deny(); return }
+        val wanted = request.resources.toList()
+        // DRM (Widevine) playback: allowed, like Chrome's default for protected content.
+        val drm = android.webkit.PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID
+        if (wanted == listOf(drm)) { request.grant(arrayOf(drm)); return }
+        val kinds = wanted.mapNotNull {
+            when (it) {
+                android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE -> "camera"
+                android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE -> "microphone"
+                else -> null
+            }
+        }
+        if (kinds.isEmpty()) { request.deny(); return }
+        val androidPerms = kinds.map {
+            if (it == "camera") android.Manifest.permission.CAMERA else android.Manifest.permission.RECORD_AUDIO
+        }.toTypedArray()
+        decide(site, kinds) { allowed ->
+            if (!allowed) { request.deny(); return@decide }
+            host.requestAndroidPermissions(androidPerms) { granted ->
+                if (granted) request.grant(wanted.toTypedArray()) else request.deny()
+            }
+        }
+    }
+
+    private fun handleGeolocation(origin: String, callback: android.webkit.GeolocationPermissions.Callback) {
+        val site = runCatching { origin.toUri().host }.getOrNull()
+        if (site == null) { callback.invoke(origin, false, false); return }
+        decide(site, listOf("location")) { allowed ->
+            if (!allowed) { callback.invoke(origin, false, false); return@decide }
+            host.requestAndroidPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION)) { granted -> callback.invoke(origin, granted, false) }
+        }
+    }
+
+    /** Resolve a permission from the site's saved decision, asking the user when it's "Ask". */
+    private fun decide(site: String, kinds: List<String>, onDecision: (Boolean) -> Unit) {
+        val cfg = dev.breezy.browser.data.SiteSettings.get(site)
+        val decisions = kinds.map {
+            when (it) {
+                "camera" -> cfg.camera
+                "microphone" -> cfg.microphone
+                else -> cfg.location
+            }
+        }
+        when {
+            decisions.any { it == SitePermission.Block } -> onDecision(false)
+            decisions.all { it == SitePermission.Allow } -> onDecision(true)
+            else -> main.post {
+                host.askSitePermission(site, kinds) { allow, remember ->
+                    if (remember) dev.breezy.browser.data.SiteSettings.update(site) { c ->
+                        val v = if (allow) SitePermission.Allow else SitePermission.Block
+                        kinds.fold(c) { acc, k ->
+                            when (k) {
+                                "camera" -> acc.copy(camera = v)
+                                "microphone" -> acc.copy(microphone = v)
+                                else -> acc.copy(location = v)
+                            }
+                        }
+                    }
+                    onDecision(allow)
+                }
+            }
         }
     }
 
@@ -522,6 +823,10 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     companion object {
         private var nextId = 1L
         private const val PICKER = "breezy/picker.js"
+        private const val PAGE = "breezy/page.js"
+        private const val READABILITY = "reader/Readability.js"
+
+        val multiProfileSupported: Boolean by lazy { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }
         private const val COSMETIC = "adblock/cosmetic.js"
         private const val SCROLL_REPAIR = "breezy/scroll-repair.js"
         private const val FORCE_UNLOCK = "breezy/force-unlock.js"
@@ -575,6 +880,7 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         private fun installCosmeticScript(webView: WebView) {
             if (documentStartScriptSupported) {
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, SCROLL_REPAIR), setOf("*"))
+                WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, PAGE), setOf("*"))
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, COSMETIC), setOf("*"))
             }
         }

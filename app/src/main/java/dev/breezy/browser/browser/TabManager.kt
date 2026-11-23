@@ -15,9 +15,19 @@ class TabManager(private val context: Context, private val host: TabHost) {
         private set
 
     private val prefs = context.getSharedPreferences("tabs", Context.MODE_PRIVATE)
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
-    fun newTab(url: String? = null, select: Boolean = true): BrowserTab {
-        val tab = BrowserTab(context, host)
+    /** The most recently closed tab, kept alive briefly so "Undo" can restore it. */
+    data class Closed(val tab: BrowserTab, val index: Int, val at: Long)
+    var recentlyClosed by mutableStateOf<Closed?>(null)
+        private set
+
+    /** Pending site-permission question for the UI (camera / microphone / location). */
+    data class PermissionPrompt(val host: String, val kinds: List<String>, val onResult: (Boolean, Boolean) -> Unit)
+    var permissionPrompt by mutableStateOf<PermissionPrompt?>(null)
+
+    fun newTab(url: String? = null, select: Boolean = true, private: Boolean = false): BrowserTab {
+        val tab = BrowserTab(context, host, isPrivate = private && BrowserTab.multiProfileSupported)
         add(tab, select)
         if (!url.isNullOrEmpty()) tab.load(url)
         return tab
@@ -47,7 +57,44 @@ class TabManager(private val context: Context, private val host: TabHost) {
         tab.destroy()
     }
 
+    /** Close [tab] but keep it for a few seconds so it can be restored with [undoClose]. */
+    fun closeWithUndo(tab: BrowserTab) {
+        val index = tabs.indexOf(tab)
+        if (index < 0) return
+        recentlyClosed?.tab?.takeIf { it !== tab }?.destroy() // only one undo slot
+        tabs.removeAt(index)
+        if (current === tab) {
+            current = null
+            tabs.getOrNull(index.coerceAtMost(tabs.size - 1))?.let { select(it) }
+        }
+        tab.onPause()
+        val closed = Closed(tab, index, System.currentTimeMillis())
+        recentlyClosed = closed
+        main.postDelayed({
+            if (recentlyClosed === closed) {
+                recentlyClosed = null
+                tab.destroy()
+            }
+        }, UNDO_WINDOW_MS)
+    }
+
+    fun undoClose() {
+        val closed = recentlyClosed ?: return
+        recentlyClosed = null
+        tabs.add(closed.index.coerceIn(0, tabs.size), closed.tab)
+        select(closed.tab)
+    }
+
+    /** Drop the undo slot now (e.g. the snackbar was dismissed). */
+    fun finalizeClose() {
+        val closed = recentlyClosed ?: return
+        recentlyClosed = null
+        closed.tab.destroy()
+    }
+
     fun closeAll() {
+        recentlyClosed?.tab?.destroy()
+        recentlyClosed = null
         tabs.toList().forEach { it.destroy() }
         tabs.clear()
         current = null
@@ -58,9 +105,10 @@ class TabManager(private val context: Context, private val host: TabHost) {
         if (tabs.isEmpty()) return
         val selected = tabs.indexOf(current).coerceAtLeast(0)
         val urls = tabs.map { it.url }
+        val privates = tabs.map { it.isPrivate }
         closeAll()
         urls.forEachIndexed { i, url ->
-            val tab = BrowserTab(context, host)
+            val tab = BrowserTab(context, host, isPrivate = privates[i])
             tabs.add(tab)
             if (url.isNotEmpty()) tab.deferLoad(url)
             if (i != selected) tab.onPause()
@@ -70,10 +118,10 @@ class TabManager(private val context: Context, private val host: TabHost) {
 
     fun save() {
         val urls = JSONArray()
-        tabs.forEach { urls.put(it.url) }
+        tabs.filter { !it.isPrivate }.forEach { urls.put(it.url) }
         prefs.edit {
             putString("urls", urls.toString())
-            putInt("current", tabs.indexOf(current))
+            putInt("current", tabs.filter { !it.isPrivate }.indexOf(current))
         }
     }
 
@@ -94,5 +142,9 @@ class TabManager(private val context: Context, private val host: TabHost) {
         if (tabs.isEmpty()) return false
         select(selectTab ?: tabs.last())
         return true
+    }
+
+    companion object {
+        const val UNDO_WINDOW_MS = 6_000L
     }
 }

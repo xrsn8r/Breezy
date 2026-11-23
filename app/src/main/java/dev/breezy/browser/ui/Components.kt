@@ -95,6 +95,15 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.FormatSize
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.automirrored.rounded.Article
+import androidx.compose.material.icons.automirrored.rounded.CallMade
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.rounded.AddHome
@@ -126,6 +135,7 @@ fun Omnibox(
     onGo: (String) -> Unit,
     onSwitchTab: (BrowserTab) -> Unit,
     onDismiss: () -> Unit,
+    privateMode: Boolean = false,
 ) {
     var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
     val focus = remember { FocusRequester() }
@@ -166,6 +176,15 @@ fun Omnibox(
                 if (query.isEmpty()) tabs.toList()
                 else tabs.filter { it.title.contains(query, true) || it.url.contains(query, true) }
             }
+            // History matches and the search engine's suggestions, fetched as you type (debounced).
+            var visited by remember { mutableStateOf<List<dev.breezy.browser.data.HistoryEntry>>(emptyList()) }
+            var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+            LaunchedEffect(query) {
+                if (query.isEmpty()) { visited = emptyList(); suggestions = emptyList(); return@LaunchedEffect }
+                kotlinx.coroutines.delay(150)
+                visited = if (privateMode) emptyList() else dev.breezy.browser.data.History.suggest(query)
+                suggestions = if (AppSettings.searchSuggestions && !query.contains("://")) fetchSuggestions(query) else emptyList()
+            }
             LazyColumn(Modifier.fillMaxWidth()) {
                 if (query.isNotEmpty()) {
                     item {
@@ -181,6 +200,30 @@ fun Omnibox(
                             modifier = Modifier.clickable { onGo(query) },
                         )
                     }
+                }
+                items(suggestions.filter { !it.equals(query, true) }.take(5), key = { "s-$it" }) { sug ->
+                    ListItem(
+                        headlineContent = { Text(sug, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        trailingContent = {
+                            // Put the suggestion in the box to refine it, like Chrome's ↖ arrow.
+                            IconButton(onClick = { value = TextFieldValue("$sug ", TextRange(sug.length + 1)) }) {
+                                Icon(Icons.AutoMirrored.Rounded.CallMade, "Edit suggestion",
+                                    modifier = Modifier.rotate(-90f))
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        modifier = Modifier.clickable { onGo(sug) },
+                    )
+                }
+                items(visited, key = { "h-${it.url}" }) { h ->
+                    ListItem(
+                        headlineContent = { Text(h.title.ifBlank { UrlInput.display(h.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(h.url.removePrefix("https://").removePrefix("www."), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        modifier = Modifier.clickable { onGo(h.url) },
+                    )
                 }
                 if (matches.isNotEmpty()) {
                     item {
@@ -206,6 +249,20 @@ fun Omnibox(
     }
 }
 
+/** OpenSearch suggestions from the selected engine: `["query", ["s1", "s2", ...]]`. */
+private suspend fun fetchSuggestions(query: String): List<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val base = AppSettings.searchEngine.suggestUrl ?: return@withContext emptyList()
+    runCatching {
+        val conn = java.net.URI(base + android.net.Uri.encode(query)).toURL().openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 2_500; conn.readTimeout = 2_500
+        try {
+            val body = conn.inputStream.use { it.readBytes().decodeToString() }
+            val arr = org.json.JSONArray(body).getJSONArray(1)
+            List(arr.length()) { arr.getString(it) }
+        } finally { conn.disconnect() }
+    }.getOrDefault(emptyList())
+}
+
 @Composable
 private fun Favicon(tab: BrowserTab, size: Int = 24) {
     val icon = tab.favicon
@@ -225,11 +282,15 @@ fun TabsSheet(
     onSelect: (BrowserTab) -> Unit,
     onClose: (BrowserTab) -> Unit,
     onNewTab: () -> Unit,
+    onNewPrivateTab: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${tabs.size} tabs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            if (BrowserTab.multiProfileSupported) {
+                IconButton(onClick = onNewPrivateTab) { Icon(Icons.Rounded.VisibilityOff, "New private tab") }
+            }
             FilledTonalButton(onClick = onNewTab) {
                 Icon(Icons.Rounded.Add, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
@@ -257,7 +318,8 @@ fun TabsSheet(
                 ) {
                     Column(Modifier.padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Favicon(t, 20)
+                            if (t.isPrivate) Icon(Icons.Rounded.VisibilityOff, "Private", Modifier.size(20.dp))
+                            else Favicon(t, 20)
                             Spacer(Modifier.weight(1f))
                             IconButton(onClick = { onClose(t) }) {
                                 Icon(Icons.Rounded.Close, contentDescription = "Close tab")
@@ -302,7 +364,7 @@ fun ShieldSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             val shape = if (active) MaterialShapes.SoftBurst.toShape() else MaterialShapes.Cookie4Sided.toShape()
@@ -391,6 +453,36 @@ fun ShieldSheet(
                     }
                 },
             )
+            Spacer(Modifier.height(8.dp))
+            val stats by dev.breezy.browser.data.Stats.snapshot.collectAsState()
+            LaunchedEffect(Unit) { dev.breezy.browser.data.Stats.flush() }
+            StatsCard(stats)
+            if (host != null && tab != null) {
+                val sites by dev.breezy.browser.data.SiteSettings.all.collectAsState()
+                val cfg = sites[host.removePrefix("www.")] ?: dev.breezy.browser.data.SiteConfig()
+                val scope = rememberCoroutineScope()
+                Spacer(Modifier.height(16.dp))
+                Text("Site settings for $host", style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth())
+                SiteControls(
+                    host = host,
+                    config = cfg,
+                    onChange = { transform ->
+                        val before = dev.breezy.browser.data.SiteSettings.get(host)
+                        dev.breezy.browser.data.SiteSettings.update(host, transform)
+                        val after = dev.breezy.browser.data.SiteSettings.get(host)
+                        tab.applySiteSettings()
+                        if (before.javascript != after.javascript || before.cookies != after.cookies) tab.reload()
+                    },
+                    onForget = {
+                        scope.launch {
+                            dev.breezy.browser.data.SiteData.forget(host)
+                            tab.applySiteSettings()
+                            tab.reload()
+                        }
+                    },
+                )
+            }
             TextButton(onClick = onManageLists) { Text("Manage filter lists") }
             Text(
                 "Powered by Brave's adblock-rust engine",
@@ -414,6 +506,12 @@ fun MenuSheet(
     onDiagnostics: () -> Unit,
     onAddToHome: () -> Unit,
     onAddAsFilterList: () -> Unit,
+    onFind: () -> Unit,
+    onReader: () -> Unit,
+    onTextSize: () -> Unit,
+    onSpeed: () -> Unit,
+    onNewPrivateTab: () -> Unit,
+    onHistory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val onPage = tab != null && tab.url.startsWith("http")
@@ -458,6 +556,44 @@ fun MenuSheet(
                 headlineContent = { Text("New tab") },
                 leadingContent = { Icon(Icons.Rounded.Add, null) },
                 modifier = itemModifier.clickable(onClick = onNewTab),
+            )
+            if (BrowserTab.multiProfileSupported) {
+                ListItem(
+                    headlineContent = { Text("New private tab") },
+                    supportingContent = { Text("No history; cookies and site data are wiped when it closes") },
+                    leadingContent = { Icon(Icons.Rounded.VisibilityOff, null) },
+                    modifier = itemModifier.clickable(onClick = onNewPrivateTab),
+                )
+            }
+            if (onPage) {
+                ListItem(
+                    headlineContent = { Text("Find in page") },
+                    leadingContent = { Icon(Icons.Rounded.Search, null) },
+                    modifier = itemModifier.clickable(onClick = onFind),
+                )
+                ListItem(
+                    headlineContent = { Text("Reader mode") },
+                    leadingContent = { Icon(Icons.AutoMirrored.Rounded.Article, null) },
+                    modifier = itemModifier.clickable(onClick = onReader),
+                )
+                ListItem(
+                    headlineContent = { Text("Text size") },
+                    leadingContent = { Icon(Icons.Rounded.FormatSize, null) },
+                    modifier = itemModifier.clickable(onClick = onTextSize),
+                )
+                if (tab!!.media.hasMedia) {
+                    ListItem(
+                        headlineContent = { Text("Playback speed") },
+                        supportingContent = { Text("${tab.playbackRate}×".replace(".0×", "×")) },
+                        leadingContent = { Icon(Icons.Rounded.Speed, null) },
+                        modifier = itemModifier.clickable(onClick = onSpeed),
+                    )
+                }
+            }
+            ListItem(
+                headlineContent = { Text("History") },
+                leadingContent = { Icon(Icons.Rounded.History, null) },
+                modifier = itemModifier.clickable(onClick = onHistory),
             )
             if (onPage) {
                 ListItem(

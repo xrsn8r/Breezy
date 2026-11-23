@@ -214,8 +214,8 @@ android {
         applicationId = "dev.breezy.browser"
         minSdk = minSdkVersion
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.3.5"
+        versionCode = 10
+        versionName = "0.4.0"
     }
 
     // Optional release signing from the environment (CI secrets); falls back to the debug key.
@@ -297,6 +297,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.haze)
     implementation(libs.haze.blur)
+    implementation(libs.androidx.media)
+    implementation(libs.androidx.swiperefreshlayout)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)

@@ -10,6 +10,8 @@ lifecycle = "2.11.1"
 coroutines = "1.11.0"
 iconsExtended = "1.7.8"
 haze = "2.1.0"
+media = "1.7.1"
+swiperefresh = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -24,6 +26,8 @@ compose-material3 = { group = "androidx.compose.material3", name = "material3", 
 compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "iconsExtended" }
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 haze-blur = { group = "dev.chrisbanes.haze", name = "haze-blur", version.ref = "haze" }
+androidx-media = { group = "androidx.media", name = "media", version.ref = "media" }
+androidx-swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefreshlayout", version.ref = "swiperefresh" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
 [plugins]

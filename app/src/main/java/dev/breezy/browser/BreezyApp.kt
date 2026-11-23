@@ -19,6 +19,9 @@ class BreezyApp : Application() {
         AppSettings.init(this)
         Shield.init(this)
         UserFilters.init(this)
+        dev.breezy.browser.data.SiteSettings.init(this)
+        dev.breezy.browser.data.History.init(this)
+        dev.breezy.browser.data.Stats.init(this)
         // Real backdrop blur (Android 16+) for the frosted toolbar; older versions use a tint.
         HazeFeatureFlags.isPlatformBackdropEnabled = true
         // Deserializing the precompiled engine takes a few ms; do it off the main thread while

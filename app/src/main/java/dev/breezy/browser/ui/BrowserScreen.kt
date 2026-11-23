@@ -32,6 +32,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.background
@@ -52,7 +58,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun BrowserScreen(
     tabs: TabManager,
-    onNewTab: (String?) -> Unit,
+    onNewTab: (url: String?, private: Boolean) -> Unit,
     onCloseTab: (BrowserTab) -> Unit,
     onShare: (String) -> Unit,
     onExit: () -> Unit,
@@ -66,6 +72,12 @@ fun BrowserScreen(
 
     var omniboxOpen by rememberSaveable { mutableStateOf(false) }
     var newTabMode by rememberSaveable { mutableStateOf(false) }
+    var newTabPrivate by rememberSaveable { mutableStateOf(false) }
+    var historyOpen by rememberSaveable { mutableStateOf(false) }
+    var textSizeOpen by remember { mutableStateOf(false) }
+    var speedOpen by remember { mutableStateOf(false) }
+    var article by remember { mutableStateOf<BrowserTab.Article?>(null) }
+    val snackbar = remember { SnackbarHostState() }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
     var shieldOpen by rememberSaveable { mutableStateOf(false) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -77,7 +89,8 @@ fun BrowserScreen(
 
     val showHome = tab == null || tab.url.isEmpty()
     val host = remember(tab?.url) { tab?.url?.toUri()?.host }
-    val overlayOpen = omniboxOpen || settingsOpen
+    val overlayOpen = omniboxOpen || settingsOpen || historyOpen || article != null
+    val finding = tab?.findResult != null
 
     // Back: page history first; then close the tab (falls back to another tab or the home page);
     // on the home page, leave the app.
@@ -85,18 +98,20 @@ fun BrowserScreen(
         if (tab!!.canGoBack) tab.goBack() else onCloseTab(tab)
     }
 
-    fun openNewTab() {
+    fun openNewTab(private: Boolean = false) {
         newTabMode = true
+        newTabPrivate = private
         omniboxOpen = true
     }
 
     fun navigate(input: String) {
         val url = UrlInput.resolve(input)
         if (url.isNotEmpty()) {
-            if (tab == null || newTabMode) onNewTab(url) else tab.load(url)
+            if (tab == null || newTabMode) onNewTab(url, newTabMode && newTabPrivate) else tab.load(url)
         }
         omniboxOpen = false
         newTabMode = false
+        newTabPrivate = false
         tabs.current?.chromeVisible = true
     }
 
@@ -153,8 +168,32 @@ fun BrowserScreen(
             }
             BackHandler(enabled = picking != null) { tab?.stopPicker() }
 
+            // --- Find in page bar (replaces the toolbar while searching) ------------------------
+            AnimatedVisibility(
+                visible = finding && picking == null,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                if (tab != null) FindBar(tab = tab, onClose = { tab.stopFind() })
+            }
+            BackHandler(enabled = finding) { tab?.stopFind() }
+
+            // --- HTTPS-only warning -----------------------------------------------------------
+            tab?.httpsFailure?.let { insecure ->
+                Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = Alignment.Center) {
+                    HttpsWarning(tab = tab, insecureUrl = insecure)
+                }
+            }
+
+            // --- Undo close snackbar ----------------------------------------------------------
+            SnackbarHost(
+                snackbar,
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp),
+            )
+
             // --- Frosted, movable floating toolbar --------------------------------------------
-            if (picking == null) MovableBrowserBar(
+            if (picking == null && !finding) MovableBrowserBar(
                 hazeState = hazeState,
                 expanded = toolbarExpanded || showHome,
                 tab = tab,
@@ -184,11 +223,33 @@ fun BrowserScreen(
                 exit = fadeOut() + slideOutVertically { it / 8 },
             ) {
                 Omnibox(
+                    privateMode = (newTabMode && newTabPrivate) || (!newTabMode && tab?.isPrivate == true),
                     initial = if (newTabMode) "" else tab?.url.orEmpty(),
                     tabs = tabs.tabs,
                     onGo = ::navigate,
                     onSwitchTab = { tabs.select(it); omniboxOpen = false; newTabMode = false },
-                    onDismiss = { omniboxOpen = false; newTabMode = false },
+                    onDismiss = { omniboxOpen = false; newTabMode = false; newTabPrivate = false },
+                )
+            }
+
+            // --- Reader mode -------------------------------------------------------------------
+            AnimatedVisibility(
+                visible = article != null,
+                enter = fadeIn() + slideInVertically { it / 6 },
+                exit = fadeOut() + slideOutVertically { it / 6 },
+            ) {
+                article?.let { ReaderScreen(it, onClose = { article = null }) }
+            }
+
+            // --- History -----------------------------------------------------------------------
+            AnimatedVisibility(
+                visible = historyOpen,
+                enter = fadeIn() + slideInHorizontally { it / 4 },
+                exit = fadeOut() + slideOutHorizontally { it / 4 },
+            ) {
+                HistoryScreen(
+                    onOpen = { url -> historyOpen = false; navigate(url) },
+                    onDismiss = { historyOpen = false },
                 )
             }
 
@@ -213,6 +274,7 @@ fun BrowserScreen(
             onSelect = { tabs.select(it); tabsOpen = false },
             onClose = onCloseTab,
             onNewTab = { tabsOpen = false; openNewTab() },
+            onNewPrivateTab = { tabsOpen = false; openNewTab(private = true) },
             onDismiss = { tabsOpen = false },
         )
     }
@@ -271,6 +333,18 @@ fun BrowserScreen(
                     }
                 }
             },
+            onFind = { menuOpen = false; tab?.startFind() },
+            onReader = {
+                menuOpen = false
+                tab?.extractArticle { a ->
+                    if (a != null) article = a
+                    else Toast.makeText(context, "No article found on this page", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onTextSize = { menuOpen = false; textSizeOpen = true },
+            onSpeed = { menuOpen = false; speedOpen = true },
+            onNewPrivateTab = { menuOpen = false; openNewTab(private = true) },
+            onHistory = { menuOpen = false; historyOpen = true },
             onDismiss = { menuOpen = false },
         )
     }
@@ -287,5 +361,39 @@ fun BrowserScreen(
 
     diagnostics?.let { report ->
         DiagnosticsDialog(report = report, onDismiss = { diagnostics = null })
+    }
+
+    val closed = tabs.recentlyClosed
+    LaunchedEffect(closed) {
+        if (closed == null) return@LaunchedEffect
+        val label = closed.tab.title.ifBlank { UrlInput.display(closed.tab.url) }.ifBlank { "Tab" }
+        val result = snackbar.showSnackbar(
+            message = "Closed $label".take(60),
+            actionLabel = "Undo",
+            withDismissAction = false,
+            duration = SnackbarDuration.Short,
+        )
+        if (result == SnackbarResult.ActionPerformed) tabs.undoClose()
+    }
+
+    tabs.permissionPrompt?.let { prompt ->
+        SitePermissionDialog(prompt.host, prompt.kinds, prompt.onResult)
+    }
+
+    if (textSizeOpen && tab != null) {
+        val host = tab.url.toUri().host.orEmpty()
+        TextSizeDialog(
+            host = host,
+            current = dev.breezy.browser.data.SiteSettings.get(host).textZoom,
+            onChange = { v ->
+                dev.breezy.browser.data.SiteSettings.update(host) { it.copy(textZoom = v) }
+                tab.applySiteSettings()
+            },
+            onDismiss = { textSizeOpen = false },
+        )
+    }
+
+    if (speedOpen && tab != null) {
+        SpeedDialog(current = tab.playbackRate, onPick = { tab.changePlaybackRate(it) }, onDismiss = { speedOpen = false })
     }
 }

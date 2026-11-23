@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RemoveModerator
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -304,7 +305,10 @@ private fun FrostedToolbar(
         ) {
             val url = tab?.url.orEmpty()
             val secure = UrlInput.isSecure(url)
-            if (url.isNotEmpty()) {
+            if (tab?.isPrivate == true) {
+                Icon(Icons.Rounded.VisibilityOff, "Private tab", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
+                Spacer(Modifier.width(6.dp))
+            } else if (url.isNotEmpty()) {
                 Icon(
                     if (secure) Icons.Rounded.Lock else Icons.Rounded.Language,
                     contentDescription = if (secure) "Secure" else "Not secure",

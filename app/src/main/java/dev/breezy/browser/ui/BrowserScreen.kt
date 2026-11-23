@@ -101,8 +101,12 @@ fun BrowserScreen(
 
     Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
-            // --- Web content (also the source the frosted toolbar blurs) ----------------------
-            Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
+            // --- Web content --------------------------------------------------------------------
+            // The WebView must NOT be wrapped in hazeSource: that renders it into an offscreen
+            // graphics layer, which breaks WebView's own compositing (backdrop-filter dialogs drawn
+            // half-empty, login pages rendering blank). The toolbar's blur over web content uses
+            // the native window backdrop on Android 16+ instead; older versions show a tint.
+            Box(Modifier.fillMaxSize()) {
                 if (tab != null) key(tab.id) {
                     AndroidView(
                         modifier = Modifier
@@ -121,7 +125,13 @@ fun BrowserScreen(
                     )
                 }
 
-                AnimatedVisibility(showHome, enter = fadeIn(), exit = fadeOut()) {
+                AnimatedVisibility(
+                    showHome,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    // Compose-drawn, so it's safe to capture as the blur source on older Android.
+                    modifier = Modifier.hazeSource(hazeState),
+                ) {
                     HomePage(
                         totalBlocked = shield.totalBlocked,
                         onSearch = { omniboxOpen = true },

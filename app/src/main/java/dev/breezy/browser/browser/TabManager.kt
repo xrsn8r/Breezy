@@ -31,6 +31,7 @@ class TabManager(private val context: Context, private val host: TabHost) {
 
     fun newTab(url: String? = null, select: Boolean = true, private: Boolean = false): BrowserTab {
         val tab = BrowserTab(context, host, isPrivate = private && BrowserTab.multiProfileSupported)
+        dev.breezy.browser.data.CrashReport.note("new tab #${tab.id}")
         add(tab, select)
         if (!url.isNullOrEmpty()) tab.load(url)
         return tab
@@ -59,6 +60,7 @@ class TabManager(private val context: Context, private val host: TabHost) {
     }
 
     fun add(tab: BrowserTab, select: Boolean = true) {
+        dev.breezy.browser.data.CrashReport.note("add tab #${tab.id} (${tabs.size + 1} open)")
         val index = current?.let { tabs.indexOf(it) + 1 } ?: tabs.size
         tabs.add(index.coerceIn(0, tabs.size), tab)
         if (select) select(tab)

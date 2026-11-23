@@ -75,7 +75,7 @@ object Downloads {
         kind: DownloadKind = DownloadKind.File,
     ): Long {
         val id = System.currentTimeMillis() * 1000 + (Math.random() * 1000).toLong()
-        val job = DownloadJob(id = id, url = url, fileName = fileName, mime = mime, headers = headers, kind = kind)
+        val job = DownloadJob(id = id, url = url, fileName = fileName, mime = mimeFor(fileName, mime), headers = headers, kind = kind)
         update { it + job }
         start(id)
         return id
@@ -84,6 +84,7 @@ object Downloads {
     /** Save bytes already in hand (data: URLs, page-generated blob: files). */
     fun saveBytes(fileName: String, mime: String, bytes: ByteArray): Long {
         val id = System.currentTimeMillis() * 1000 + (Math.random() * 1000).toLong()
+        val mime = mimeFor(fileName, mime)
         val uri = Storage.create(app, fileName, mime)
         Storage.open(app, uri).apply { channel.write(ByteBuffer.wrap(bytes)); close() }
         Storage.finish(app, uri)
@@ -93,7 +94,7 @@ object Downloads {
         )
         update { it + job }
         persist()
-        onCompleted?.invoke(job)
+        onCompleted?.invoke(job); completed.tryEmit(job)
         return id
     }
 
@@ -110,7 +111,7 @@ object Downloads {
                     Storage.finish(app, done.uri!!.toUri())
                     mutate(id) { it.copy(status = DownloadStatus.Completed, speed = 0) }
                     persist()
-                    get(id)?.let { onCompleted?.invoke(it) }
+                    get(id)?.let { onCompleted?.invoke(it); completed.tryEmit(it) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -151,12 +152,32 @@ object Downloads {
         persist()
     }
 
+    /**
+     * Servers often label files `application/octet-stream`; trust a known extension instead so
+     * the right app (e.g. the package installer for .apk) opens them.
+     */
+    fun mimeFor(fileName: String, mime: String?): String {
+        val generic = mime.isNullOrBlank() || mime == "application/octet-stream" || mime == "binary/octet-stream" ||
+            mime == "application/force-download" || mime == "application/x-download"
+        if (!generic) return mime!!
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        if (ext == "apk") return APK_MIME
+        return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+    }
+
+    const val APK_MIME = "application/vnd.android.package-archive"
+
+    fun isApk(job: DownloadJob) = mimeFor(job.fileName, job.mime) == APK_MIME
+
     fun openIntent(job: DownloadJob): Intent? {
         val uri = job.uri?.toUri() ?: return null
         return Intent(Intent.ACTION_VIEW)
-            .setDataAndType(Storage.shareable(app, uri), job.mime)
+            .setDataAndType(Storage.shareable(app, uri), mimeFor(job.fileName, job.mime))
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     }
+
+    /** Finished downloads, for the browser's "Downloaded … · Open" snackbar. */
+    val completed = kotlinx.coroutines.flow.MutableSharedFlow<DownloadJob>(extraBufferCapacity = 4)
 
     fun shareIntent(job: DownloadJob): Intent? {
         val uri = job.uri?.toUri() ?: return null

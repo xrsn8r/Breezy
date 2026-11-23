@@ -110,11 +110,7 @@ private fun DownloadCard(job: DownloadJob) {
         DownloadStatus.Cancelled -> "Cancelled"
     }
     val open = {
-        Downloads.openIntent(job)?.let {
-            runCatching { context.startActivity(it) }.onFailure {
-                Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
-            }
-        }
+        (context as? android.app.Activity)?.let { dev.breezy.browser.downloads.FileOpener.open(it, job) }
         Unit
     }
     Card(

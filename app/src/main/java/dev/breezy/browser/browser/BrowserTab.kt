@@ -53,6 +53,8 @@ interface TabHost {
     fun requestAndroidPermissions(permissions: Array<String>, onResult: (Boolean) -> Unit)
     fun onMediaStateChanged(tab: BrowserTab)
     fun onDownloadStarted(name: String)
+    /** Open [url] in a new tab next to the current one (target=_blank links). */
+    fun openLinkInNewTab(url: String, private: Boolean)
     /** [tab]'s renderer died; its WebView is unusable and must be replaced. */
     fun onRendererGone(tab: BrowserTab)
 }
@@ -552,6 +554,7 @@ class BrowserTab(
          */
         override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
             android.util.Log.w("BrowserTab", "Renderer gone (crash=${detail.didCrash()}) on $url")
+            dev.breezy.browser.data.CrashReport.note("renderer gone crash=${detail.didCrash()} on $pageHost")
             main.post { host.onRendererGone(this@BrowserTab) }
             return true
         }
@@ -584,6 +587,7 @@ class BrowserTab(
                         selector = null
                     }
                 } else android.content.Intent(android.content.Intent.ACTION_VIEW, request.url)
+                dev.breezy.browser.data.CrashReport.note("hand off $scheme: to ${intent.`package` ?: "system"}")
                 view.context.startActivity(intent)
                 true
             }.getOrDefault(true)
@@ -660,6 +664,19 @@ class BrowserTab(
 
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
             if (!isUserGesture) return false // block pop-unders
+            // A plain link with target=_blank (e.g. "View on Reddit" inside an embed): open its URL
+            // in an ordinary new tab. Only script-opened windows (sign-in popups that talk back to
+            // their opener) need a WebView handed to the opener.
+            val hit = view.hitTestResult
+            val link = hit.extra?.takeIf {
+                (hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE || hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) &&
+                    (it.startsWith("https://") || it.startsWith("http://"))
+            }
+            dev.breezy.browser.data.CrashReport.note("popup from ${pageHost} link=${link != null} dialog=$isDialog")
+            if (link != null) {
+                main.post { host.openLinkInNewTab(link, isPrivate) }
+                return false
+            }
             // Links with target=_blank inside embeds (Reddit, X, YouTube cards) land here. The
             // popup must share the opener's profile; if WebView still refuses it, drop the popup
             // rather than take the app down.

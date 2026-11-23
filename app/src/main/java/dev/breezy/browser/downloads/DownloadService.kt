@@ -88,6 +88,7 @@ class DownloadService : Service() {
         private const val CHANNEL_DONE = "downloads_done"
         private const val ONGOING_ID = 7001
         const val EXTRA_OPEN_DOWNLOADS = "open_downloads"
+        const val EXTRA_OPEN_FILE = "dev.breezy.browser.OPEN_FILE"
 
         fun update(context: Context) {
             if (!Downloads.anyActive) return
@@ -109,9 +110,13 @@ class DownloadService : Service() {
         /** "Downloaded <file>" notification; tapping opens the file. */
         fun notifyCompleted(context: Context, job: DownloadJob) {
             ensureChannels(context)
-            val open = Downloads.openIntent(job)?.let {
-                PendingIntent.getActivity(context, job.id.toInt(), it, PendingIntent.FLAG_IMMUTABLE)
-            } ?: openApp(context)
+            // Route through Breezy so APKs can ask for install permission first.
+            val open = PendingIntent.getActivity(
+                context, job.id.toInt(),
+                Intent(context, MainActivity::class.java).putExtra(EXTRA_OPEN_FILE, job.id)
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
             val n = NotificationCompat.Builder(context, CHANNEL_DONE)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentTitle(job.fileName)

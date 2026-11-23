@@ -59,8 +59,11 @@ class MainActivity : ComponentActivity(), TabHost {
         super.onCreate(savedInstanceState)
 
         tabs = TabManager(this, this)
-        if (savedInstanceState == null) dev.breezy.browser.data.CrashReport.takePending(this)?.let(::offerCrashReport)
+        // Once per process: after a crash, reopening from Recents restores state, so don't key
+        // this on savedInstanceState.
+        dev.breezy.browser.data.CrashReport.takePending(this)?.let(::offerCrashReport)
         if (intent.getBooleanExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_DOWNLOADS, false)) tabs.showDownloads = true
+        if (savedInstanceState == null) openFileFrom(intent)
         val incoming = intentUrl(intent)
         if (AppSettings.clearOnExit) {
             // Covers the case where the process was killed before onDestroy could clear.
@@ -140,7 +143,16 @@ class MainActivity : ComponentActivity(), TabHost {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_DOWNLOADS, false)) tabs.showDownloads = true
+        openFileFrom(intent)
         intentUrl(intent)?.let { tabs.newTab(it) }
+    }
+
+    /** Download notification tapped: open (or install) that file. */
+    private fun openFileFrom(intent: Intent?) {
+        val id = intent?.getLongExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_FILE, -1L) ?: -1L
+        if (id < 0) return
+        intent?.removeExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_FILE)
+        dev.breezy.browser.downloads.Downloads.get(id)?.let { dev.breezy.browser.downloads.FileOpener.open(this, it) }
     }
 
     private fun intentUrl(intent: Intent?): String? = when (intent?.action) {
@@ -159,6 +171,7 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onPause() {
         super.onPause()
+        dev.breezy.browser.data.CrashReport.note("activity onPause finishing=$isFinishing")
         if (keepPlaying || isInPictureInPictureMode) {
             // Keep the page "visible" to Chromium so video isn't suspended in the background.
             tabs.current?.webView?.keepVisible = true
@@ -172,6 +185,7 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onStop() {
         super.onStop()
+        dev.breezy.browser.data.CrashReport.note("activity onStop finishing=$isFinishing")
         if (pipWasActive && !isInPictureInPictureMode) {
             // The picture-in-picture window was dismissed: stop playback.
             pipWasActive = false
@@ -189,11 +203,13 @@ class MainActivity : ComponentActivity(), TabHost {
         super.onResume()
         tabs.current?.webView?.keepVisible = false
         tabs.current?.onResume()
+        dev.breezy.browser.downloads.FileOpener.resumePending(this)
         dev.breezy.browser.media.MediaPlaybackService.stop(this)
         dev.breezy.browser.media.MediaHub.tab = null
     }
 
     override fun onDestroy() {
+        dev.breezy.browser.data.CrashReport.note("activity onDestroy finishing=$isFinishing")
         dev.breezy.browser.media.MediaPlaybackService.stop(this)
         if (isFinishing) {
             if (AppSettings.clearOnExit) {
@@ -269,6 +285,10 @@ class MainActivity : ComponentActivity(), TabHost {
     // --- TabHost -------------------------------------------------------------------------------
 
     override fun openInNewTab(tab: BrowserTab) = tabs.add(tab)
+
+    override fun openLinkInNewTab(url: String, private: Boolean) {
+        tabs.newTab(url, private = private)
+    }
 
     private fun offerCrashReport(report: String) {
         android.app.AlertDialog.Builder(this)

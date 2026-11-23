@@ -124,7 +124,7 @@ fun SettingsScreen(
     ) { padding ->
         LazyColumn(
             contentPadding = PaddingValues(
-                top = padding.calculateTopPadding(),
+                top = padding.calculateTopPadding() + 16.dp,
                 bottom = padding.calculateBottomPadding() + 96.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -426,6 +426,19 @@ fun SettingsScreen(
                         AppSettings.updateIdentifyAsChrome(it)
                         onDarkPagesChanged() // recreates tabs so the new identity applies
                     }
+                    ListItem(
+                        headlineContent = { Text("Share diagnostics") },
+                        supportingContent = { Text("Recent app exits and events, to report a bug. No pages or history") },
+                        colors = cardItemColors(),
+                        modifier = Modifier.clickable {
+                            val text = dev.breezy.browser.data.CrashReport.diagnostics(context)
+                            context.startActivity(android.content.Intent.createChooser(
+                                android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                                    .putExtra(android.content.Intent.EXTRA_SUBJECT, "Breezy diagnostics")
+                                    .putExtra(android.content.Intent.EXTRA_TEXT, text),
+                                "Share diagnostics"))
+                        },
+                    )
                 }
             }
             item { Spacer(Modifier.navigationBarsPadding()) }

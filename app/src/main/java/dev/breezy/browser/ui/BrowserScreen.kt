@@ -350,6 +350,21 @@ fun BrowserScreen(
         DiagnosticsDialog(report = report, onDismiss = { diagnostics = null })
     }
 
+    // "Downloaded <file> · Open", like other browsers, so an APK installs in one tap.
+    LaunchedEffect(Unit) {
+        dev.breezy.browser.downloads.Downloads.completed.collect { job ->
+            val result = snackbar.showSnackbar(
+                message = "Downloaded ${job.fileName}".take(60),
+                actionLabel = if (dev.breezy.browser.downloads.Downloads.isApk(job)) "Install" else "Open",
+                withDismissAction = true,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                (context as? android.app.Activity)?.let { dev.breezy.browser.downloads.FileOpener.open(it, job) }
+            }
+        }
+    }
+
     val closed = tabs.recentlyClosed
     LaunchedEffect(closed) {
         if (closed == null) return@LaunchedEffect

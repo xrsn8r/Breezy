@@ -76,6 +76,9 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         private set
 
     /** Element picker state while "Block element" is active; null otherwise. */
+    /** Whether the toolbar should be expanded: collapses on scroll down, returns on scroll up. */
+    var chromeVisible by mutableStateOf(true)
+
     var picker by mutableStateOf<PickerState?>(null)
         private set
 
@@ -133,6 +136,10 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
         isScrollbarFadingEnabled = true
+        setOnScrollChangeListener { _, _, y, _, oldY ->
+            if (y > oldY + 12) chromeVisible = false
+            else if (y < oldY - 12 || y == 0) chromeVisible = true
+        }
         overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
 
         if (AppSettings.identifyAsChrome) presentAsChrome(settings)
@@ -186,6 +193,7 @@ class BrowserTab(context: Context, private val host: TabHost, val id: Long = nex
     }
 
     fun destroy() {
+        (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.stopLoading()
         webView.removeJavascriptInterface("BreezyShield")
         webView.removeJavascriptInterface("BreezyPicker")

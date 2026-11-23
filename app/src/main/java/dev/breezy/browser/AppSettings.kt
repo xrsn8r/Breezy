@@ -60,6 +60,14 @@ object AppSettings {
     var frostedToolbar by mutableStateOf(false)
         private set
 
+    /**
+     * Host the WebView directly in the window (beneath a transparent Compose overlay) instead of
+     * inside Compose's drawing via AndroidView. Drawing WebView through Compose layers can break
+     * CSS effects like backdrop-filter (blank X login, half-drawn dialogs). Applies on restart.
+     */
+    var nativePageHost by mutableStateOf(true)
+        private set
+
     /** Present as mobile Chrome rather than an Android WebView (sign-in compatibility). */
     var identifyAsChrome by mutableStateOf(true)
         private set
@@ -77,6 +85,7 @@ object AppSettings {
         forceDarkAllSites = prefs.getBoolean("force_dark_all_sites", false)
         frostedToolbar = prefs.getBoolean("frosted_toolbar", false)
         identifyAsChrome = prefs.getBoolean("identify_as_chrome", true)
+        nativePageHost = prefs.getBoolean("native_page_host", true)
         searchEngine = runCatching { SearchEngine.valueOf(prefs.getString("search_engine", null)!!) }
             .getOrDefault(SearchEngine.Startpage)
         toolbarPosition = prefs.getFloat("toolbar_position", 0f)
@@ -128,6 +137,11 @@ object AppSettings {
     fun updateFrostedToolbar(value: Boolean) {
         frostedToolbar = value
         prefs.edit { putBoolean("frosted_toolbar", value) }
+    }
+
+    fun updateNativePageHost(value: Boolean) {
+        nativePageHost = value
+        prefs.edit { putBoolean("native_page_host", value) }
     }
 
     fun updateIdentifyAsChrome(value: Boolean) {

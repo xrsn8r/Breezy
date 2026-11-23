@@ -202,6 +202,18 @@ fun SettingsScreen(
                         colors = cardItemColors(),
                     )
                     ListItem(
+                        headlineContent = { Text("Render pages natively") },
+                        supportingContent = { Text("Draw pages directly in the window instead of through the app UI layer. Restarts the browser") },
+                        trailingContent = {
+                            val activity = LocalContext.current as? dev.breezy.browser.MainActivity
+                            Switch(checked = AppSettings.nativePageHost, onCheckedChange = {
+                                AppSettings.updateNativePageHost(it)
+                                activity?.restartForHostChange()
+                            })
+                        },
+                        colors = cardItemColors(),
+                    )
+                    ListItem(
                         headlineContent = { Text("Identify as Chrome") },
                         supportingContent = { Text("Helps Google/YouTube sign-in. Turn off if a site misbehaves (reloads tabs)") },
                         trailingContent = {

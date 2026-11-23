@@ -11,10 +11,15 @@ import android.webkit.WebChromeClient
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import kotlinx.coroutines.launch
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.breezy.browser.adblock.Shield
@@ -49,17 +54,57 @@ class MainActivity : ComponentActivity(), TabHost {
         tabs.restore()
         if (incoming != null) tabs.newTab(incoming)
 
-        setContent {
-            BreezyTheme {
-                BrowserScreen(
-                    tabs = tabs,
-                    onNewTab = { url -> tabs.newTab(url) },
-                    onCloseTab = ::closeTab,
-                    onShare = ::share,
-                    onExit = ::finish,
-                )
+        val ui = ComposeView(this).apply {
+            setContent {
+                BreezyTheme {
+                    BrowserScreen(
+                        tabs = tabs,
+                        onNewTab = { url -> tabs.newTab(url) },
+                        onCloseTab = ::closeTab,
+                        onShare = ::share,
+                        onExit = ::finish,
+                    )
+                }
             }
         }
+
+        if (AppSettings.nativePageHost) {
+            // The current tab's WebView lives directly in the window, beneath a transparent Compose
+            // overlay, so it composites like in any other browser (not through Compose layers).
+            val root = FrameLayout(this)
+            root.addView(webHost, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            root.addView(ui, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            setContentView(root)
+            ViewCompat.setOnApplyWindowInsetsListener(webHost) { v, insets ->
+                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+                v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+                insets
+            }
+            lifecycleScope.launch {
+                snapshotFlow { tabs.current }.collect { attachToHost(it) }
+            }
+        } else {
+            setContentView(ui)
+        }
+    }
+
+    private val webHost by lazy { FrameLayout(this) }
+
+    private fun attachToHost(tab: BrowserTab?) {
+        val view = tab?.webView
+        if (view != null && view.parent === webHost && webHost.childCount == 1) return
+        webHost.removeAllViews()
+        if (view != null) {
+            (view.parent as? ViewGroup)?.removeView(view)
+            webHost.addView(view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        }
+    }
+
+    /** Switch page hosting mode (Settings → Troubleshooting); tabs are saved and restored. */
+    fun restartForHostChange() {
+        tabs.save()
+        recreate()
     }
 
     override fun onNewIntent(intent: Intent) {

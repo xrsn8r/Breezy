@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -71,7 +72,8 @@ fun BrowserScreen(
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var addHome by remember { mutableStateOf<Shortcut?>(null) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
-    var toolbarExpanded by remember { mutableStateOf(true) }
+    val toolbarExpanded = tab?.chromeVisible ?: true
+    val nativeHost = remember { AppSettings.nativePageHost } // fixed for this activity instance
 
     val showHome = tab == null || tab.url.isEmpty()
     val host = remember(tab?.url) { tab?.url?.toUri()?.host }
@@ -95,31 +97,27 @@ fun BrowserScreen(
         }
         omniboxOpen = false
         newTabMode = false
-        toolbarExpanded = true
+        tabs.current?.chromeVisible = true
     }
 
-    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
+    // In native-host mode the WebView sits *behind* this Compose layer, so the root must be
+    // transparent AND must not swallow touches. (Material Surface blocks touches from reaching
+    // what's behind it, so use a plain Box.)
+    val rootBackground = if (nativeHost) Modifier else Modifier.background(MaterialTheme.colorScheme.surface)
+    Box(Modifier.fillMaxSize().then(rootBackground)) {
         Box(Modifier.fillMaxSize()) {
             // --- Web content --------------------------------------------------------------------
-            // The WebView must NOT be wrapped in hazeSource: that renders it into an offscreen
-            // graphics layer, which breaks WebView's own compositing (backdrop-filter dialogs drawn
-            // half-empty, login pages rendering blank). The toolbar's blur over web content uses
-            // the native window backdrop on Android 16+ instead; older versions show a tint.
+            // Never wrap the WebView in hazeSource or other offscreen layers: that breaks WebView's
+            // own compositing (backdrop-filter dialogs drawn half-empty, blank login pages).
             Box(Modifier.fillMaxSize()) {
-                if (tab != null) key(tab.id) {
+                if (tab != null && !nativeHost) key(tab.id) {
                     AndroidView(
                         modifier = Modifier
                             .fillMaxSize()
                             .statusBarsPadding()
                             .windowInsetsPadding(WindowInsets.navigationBars),
                         factory = {
-                            tab.webView.apply {
-                                (parent as? ViewGroup)?.removeView(this)
-                                setOnScrollChangeListener { _, _, y, _, oldY ->
-                                    if (y > oldY + 12) toolbarExpanded = false
-                                    else if (y < oldY - 12 || y == 0) toolbarExpanded = true
-                                }
-                            }
+                            tab.webView.apply { (parent as? ViewGroup)?.removeView(this) }
                         },
                     )
                 }

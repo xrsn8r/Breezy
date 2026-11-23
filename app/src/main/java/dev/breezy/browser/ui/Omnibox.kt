@@ -91,7 +91,9 @@ fun Omnibox(
                 visited = if (privateMode) emptyList() else dev.breezy.browser.data.History.suggest(query)
                 suggestions = if (AppSettings.searchSuggestions && !query.contains("://")) fetchSuggestions(query) else emptyList()
             }
-            // Drawn bottom-up so the best match sits right above the text field.
+            // Drawn bottom-up (reverseLayout), so the first items sit right above the text field, a
+            // thumb's reach from the keyboard: what you typed, then pages you've visited, then
+            // the engine's suggestions, then open tabs furthest away.
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true) {
                 if (query.isNotEmpty()) {
                     item {
@@ -108,7 +110,16 @@ fun Omnibox(
                         )
                     }
                 }
-                items(suggestions.filter { !it.equals(query, true) }.take(5), key = { "s-$it" }) { sug ->
+                items(visited.take(3), key = { "h-${it.url}" }) { h ->
+                    ListItem(
+                        headlineContent = { Text(h.title.ifBlank { UrlInput.display(h.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(h.url.removePrefix("https://").removePrefix("www."), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        modifier = Modifier.clickable { onGo(h.url) },
+                    )
+                }
+                items(suggestions.filter { !it.equals(query, true) }.take(4), key = { "s-$it" }) { sug ->
                     ListItem(
                         headlineContent = { Text(sug, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
@@ -121,15 +132,6 @@ fun Omnibox(
                         },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                         modifier = Modifier.clickable { onGo(sug) },
-                    )
-                }
-                items(visited, key = { "h-${it.url}" }) { h ->
-                    ListItem(
-                        headlineContent = { Text(h.title.ifBlank { UrlInput.display(h.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        supportingContent = { Text(h.url.removePrefix("https://").removePrefix("www."), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingContent = { Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        modifier = Modifier.clickable { onGo(h.url) },
                     )
                 }
                 if (matches.isNotEmpty()) {

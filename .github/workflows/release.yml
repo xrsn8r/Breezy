@@ -51,13 +51,26 @@ jobs:
       - name: Decode signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.BREEZY_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.BREEZY_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.BREEZY_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.BREEZY_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "BREEZY_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          else
-            echo "::warning::BREEZY_KEYSTORE_BASE64 secret not set - APK will be signed with a throwaway debug key"
+          missing=""
+          [ -n "$KEYSTORE_BASE64" ] || missing="$missing BREEZY_KEYSTORE_BASE64"
+          [ -n "$KS_PASS" ] || missing="$missing BREEZY_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing BREEZY_KEY_ALIAS"
+          [ -n "$KEY_PASS" ] || missing="$missing BREEZY_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::warning::Missing signing secrets:$missing - APK will be signed with a throwaway debug key"
+            exit 0
           fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$KS_PASS" -alias "$KEY_ALIAS" > /dev/null; then
+            echo "::error::Keystore could not be opened with BREEZY_KEYSTORE_PASSWORD / BREEZY_KEY_ALIAS - check the secrets"
+            exit 1
+          fi
+          echo "BREEZY_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "Release signing key loaded (alias $KEY_ALIAS)"
 
       - name: Build arm64-v8a release APK
         env:

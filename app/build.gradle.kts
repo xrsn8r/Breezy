@@ -148,7 +148,12 @@ android {
 
     // Optional release signing from the environment (CI secrets); falls back to the debug key.
     val keystorePath = System.getenv("BREEZY_KEYSTORE")
-    if (keystorePath != null) {
+    val signingEnv = listOf("BREEZY_KEYSTORE_PASSWORD", "BREEZY_KEY_ALIAS", "BREEZY_KEY_PASSWORD")
+    val missing = signingEnv.filter { System.getenv(it).isNullOrEmpty() }
+    if (keystorePath != null && missing.isNotEmpty()) {
+        logger.warn("Release keystore given but $missing not set; signing with the debug key instead.")
+    }
+    if (keystorePath != null && missing.isEmpty()) {
         signingConfigs.create("release") {
             storeFile = file(keystorePath)
             storePassword = System.getenv("BREEZY_KEYSTORE_PASSWORD")

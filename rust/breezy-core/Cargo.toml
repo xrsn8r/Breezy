@@ -1,0 +1,27 @@
+[package]
+name = "breezy-core"
+version = "0.1.0"
+edition = "2024"
+license = "MPL-2.0"
+description = "Native core for the Breezy browser: Brave adblock-rust engine exposed over JNI."
+publish = false
+
+[lib]
+# cdylib -> libbreezy_core.so for Android, rlib -> host tests and the list compiler binary.
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "breezy-compile"
+path = "src/bin/compile.rs"
+
+[dependencies]
+# Disable `single-thread` so Engine is Send + Sync: WebView calls
+# shouldInterceptRequest from a pool of IO threads concurrently.
+adblock = { version = "0.13.6", default-features = false, features = [
+    "embedded-domain-resolver",
+    "full-regex-handling",
+] }
+serde_json = "1"
+jni = { version = "0.21.1", default-features = false }
+base64 = "0.22"
+

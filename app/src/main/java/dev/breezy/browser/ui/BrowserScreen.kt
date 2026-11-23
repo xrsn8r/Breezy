@@ -120,7 +120,6 @@ fun BrowserScreen(
                 ) {
                     HomePage(
                         totalBlocked = shield.totalBlocked,
-                        onSearch = { omniboxOpen = true },
                         onOpen = ::navigate,
                     )
                 }

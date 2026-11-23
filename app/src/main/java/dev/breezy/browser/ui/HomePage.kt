@@ -68,7 +68,7 @@ private val tileShapes = listOf(
 )
 
 @Composable
-fun HomePage(totalBlocked: Long, onSearch: () -> Unit, onOpen: (String) -> Unit) {
+fun HomePage(totalBlocked: Long, onOpen: (String) -> Unit) {
     val spin = rememberInfiniteTransition(label = "logo")
     val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(24_000), RepeatMode.Restart), label = "angle")
     var editing by remember { mutableStateOf<Shortcut?>(null) }
@@ -108,19 +108,6 @@ fun HomePage(totalBlocked: Long, onSearch: () -> Unit, onOpen: (String) -> Unit)
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(28.dp))
-            Surface(
-                onClick = onSearch,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
-                Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Search, contentDescription = null)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Search or type URL", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
             Spacer(Modifier.height(28.dp))
             ShortcutGrid(
                 shortcuts = AppSettings.shortcuts,

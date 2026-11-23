@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -73,35 +74,9 @@ fun Omnibox(
     LaunchedEffect(Unit) { focus.requestFocus() }
 
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.statusBarsPadding().imePadding().padding(top = 8.dp)) {
-            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Close")
-                }
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it },
-                    modifier = Modifier.weight(1f).focusRequester(focus),
-                    singleLine = true,
-                    shape = CircleShape,
-                    placeholder = { Text("Search or type URL") },
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (value.text.isNotEmpty()) {
-                            IconButton(onClick = { value = TextFieldValue("") }) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Clear")
-                            }
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    ),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { onGo(value.text) }),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
+        // The text field sits at the bottom, just above the keyboard (where the toolbar was), with
+        // suggestions stacking upward from it.
+        Column(Modifier.statusBarsPadding().navigationBarsPadding().imePadding()) {
             val query = value.text.trim()
             val matches = remember(query, tabs.size) {
                 if (query.isEmpty()) tabs.toList()
@@ -116,7 +91,8 @@ fun Omnibox(
                 visited = if (privateMode) emptyList() else dev.breezy.browser.data.History.suggest(query)
                 suggestions = if (AppSettings.searchSuggestions && !query.contains("://")) fetchSuggestions(query) else emptyList()
             }
-            LazyColumn(Modifier.fillMaxWidth()) {
+            // Drawn bottom-up so the best match sits right above the text field.
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true) {
                 if (query.isNotEmpty()) {
                     item {
                         val resolved = UrlInput.resolve(query)
@@ -157,14 +133,6 @@ fun Omnibox(
                     )
                 }
                 if (matches.isNotEmpty()) {
-                    item {
-                        Text(
-                            "Open tabs",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
-                        )
-                    }
                     items(matches, key = { it.id }) { t ->
                         ListItem(
                             headlineContent = { Text(t.title.ifEmpty { "New tab" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -174,7 +142,42 @@ fun Omnibox(
                             modifier = Modifier.clickable { onSwitchTab(t) },
                         )
                     }
+                    item {
+                        Text(
+                            "Open tabs",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
+                        )
+                    }
                 }
+            }
+            Row(Modifier.padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Close")
+                }
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier.weight(1f).focusRequester(focus),
+                    singleLine = true,
+                    shape = CircleShape,
+                    placeholder = { Text("Search or type URL") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (value.text.isNotEmpty()) {
+                            IconButton(onClick = { value = TextFieldValue("") }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear")
+                            }
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { onGo(value.text) }),
+                )
             }
         }
     }

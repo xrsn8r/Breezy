@@ -53,6 +53,8 @@ interface TabHost {
     fun requestAndroidPermissions(permissions: Array<String>, onResult: (Boolean) -> Unit)
     fun onMediaStateChanged(tab: BrowserTab)
     fun onDownloadStarted(name: String)
+    /** [tab]'s renderer died; its WebView is unusable and must be replaced. */
+    fun onRendererGone(tab: BrowserTab)
 }
 
 /**
@@ -66,9 +68,13 @@ class BrowserTab(
     /** Private tabs use their own WebView profile (cookies/storage wiped on close) and no history. */
     val isPrivate: Boolean = false,
     val id: Long = nextId++,
+    /** A popup opened from a private tab shares its opener's profile (WebView requires it). */
+    sharedProfile: String? = null,
 ) {
     private val appContext = context.applicationContext
-    private val profileName: String? = if (isPrivate && multiProfileSupported) "private-$id-${System.nanoTime()}" else null
+    private val profileName: String? =
+        (sharedProfile ?: if (isPrivate && multiProfileSupported) "private-$id-${System.nanoTime()}" else null)
+            ?.also { profileUsers.merge(it, 1, Int::plus) }
 
     var url by mutableStateOf("")
         private set
@@ -423,9 +429,13 @@ class BrowserTab(
         scriptlets.values.forEach { it?.remove() }
         scriptlets.clear()
         webView.destroy()
-        // Wipe the private profile (cookies, storage, cache) once its WebView is gone.
+        // Wipe the private profile (cookies, storage, cache) once no tab's WebView uses it.
         profileName?.let { name ->
-            main.postDelayed({ runCatching { androidx.webkit.ProfileStore.getInstance().deleteProfile(name) } }, 500)
+            val left = profileUsers.merge(name, -1, Int::plus) ?: 0
+            if (left <= 0) {
+                profileUsers.remove(name)
+                main.postDelayed({ runCatching { androidx.webkit.ProfileStore.getInstance().deleteProfile(name) } }, 500)
+            }
         }
     }
 
@@ -536,6 +546,16 @@ class BrowserTab(
     }
 
     private inner class Client : androidx.webkit.WebViewClientCompat() {
+        /**
+         * The page's renderer crashed or was killed for memory. Without handling this, Android
+         * terminates the whole app. Hand the tab to the host, which swaps in a fresh WebView.
+         */
+        override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+            android.util.Log.w("BrowserTab", "Renderer gone (crash=${detail.didCrash()}) on $url")
+            main.post { host.onRendererGone(this@BrowserTab) }
+            return true
+        }
+
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) = intercept(request)
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -640,12 +660,22 @@ class BrowserTab(
 
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
             if (!isUserGesture) return false // block pop-unders
-            val tab = BrowserTab(view.context, host)
-            val transport = resultMsg.obj as WebView.WebViewTransport
-            transport.webView = tab.webView
-            resultMsg.sendToTarget()
-            host.openInNewTab(tab)
-            return true
+            // Links with target=_blank inside embeds (Reddit, X, YouTube cards) land here. The
+            // popup must share the opener's profile; if WebView still refuses it, drop the popup
+            // rather than take the app down.
+            val tab = runCatching { BrowserTab(view.context, host, isPrivate, sharedProfile = profileName) }.getOrNull()
+                ?: return false
+            return try {
+                val transport = resultMsg.obj as WebView.WebViewTransport
+                transport.webView = tab.webView
+                resultMsg.sendToTarget()
+                host.openInNewTab(tab)
+                true
+            } catch (e: Exception) {
+                android.util.Log.w("BrowserTab", "Popup failed", e)
+                tab.destroy()
+                false
+            }
         }
 
         override fun onCloseWindow(window: WebView) = host.closeTab(this@BrowserTab)
@@ -973,6 +1003,8 @@ class BrowserTab(
         private val COPIED_HEADERS_CANONICAL = mapOf("referer" to "Referer", "origin" to "Origin", "user-agent" to "User-Agent", "authorization" to "Authorization")
         private val COPIED_HEADERS = COPIED_HEADERS_CANONICAL.keys
         private var nextId = 1L
+        /** How many live tabs use each private profile (a popup shares its opener's). */
+        private val profileUsers = HashMap<String, Int>()
         private const val PICKER = "breezy/picker.js"
         private const val PAGE = "breezy/page.js"
         private const val READABILITY = "reader/Readability.js"

@@ -36,6 +36,28 @@ class TabManager(private val context: Context, private val host: TabHost) {
         return tab
     }
 
+    private var lastCrash = 0L
+
+    /**
+     * Swap a tab whose renderer died for a fresh one at the same position, reloading its page
+     * unless it crashed again within 15 s (then it opens empty, to avoid a crash loop).
+     */
+    fun replaceCrashed(old: BrowserTab): Boolean {
+        val index = tabs.indexOf(old)
+        if (index < 0) { old.destroy(); return false }
+        val now = System.currentTimeMillis()
+        val reload = now - lastCrash > 15_000
+        lastCrash = now
+        val url = old.url
+        val fresh = BrowserTab(context, host, isPrivate = old.isPrivate)
+        val wasCurrent = current === old
+        tabs[index] = fresh
+        if (wasCurrent) { current = fresh; fresh.onResume() }
+        old.destroy()
+        if (reload && url.startsWith("http")) fresh.load(url)
+        return reload
+    }
+
     fun add(tab: BrowserTab, select: Boolean = true) {
         val index = current?.let { tabs.indexOf(it) + 1 } ?: tabs.size
         tabs.add(index.coerceIn(0, tabs.size), tab)

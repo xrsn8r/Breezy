@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity(), TabHost {
         super.onCreate(savedInstanceState)
 
         tabs = TabManager(this, this)
+        if (savedInstanceState == null) dev.breezy.browser.data.CrashReport.takePending(this)?.let(::offerCrashReport)
         if (intent.getBooleanExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_DOWNLOADS, false)) tabs.showDownloads = true
         val incoming = intentUrl(intent)
         if (AppSettings.clearOnExit) {
@@ -268,6 +269,28 @@ class MainActivity : ComponentActivity(), TabHost {
     // --- TabHost -------------------------------------------------------------------------------
 
     override fun openInNewTab(tab: BrowserTab) = tabs.add(tab)
+
+    private fun offerCrashReport(report: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Breezy closed unexpectedly")
+            .setMessage("Share the crash report so it can be fixed? It contains technical details only, no pages or history.")
+            .setPositiveButton("Share") { _, _ ->
+                startActivity(android.content.Intent.createChooser(
+                    android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                        .putExtra(android.content.Intent.EXTRA_SUBJECT, "Breezy crash report")
+                        .putExtra(android.content.Intent.EXTRA_TEXT, report),
+                    "Share crash report"))
+            }
+            .setNegativeButton("Dismiss", null)
+            .show()
+    }
+
+    override fun onRendererGone(tab: BrowserTab) {
+        val reloaded = tabs.replaceCrashed(tab)
+        android.widget.Toast.makeText(this,
+            if (reloaded) "The page crashed and was reloaded" else "The page keeps crashing",
+            android.widget.Toast.LENGTH_SHORT).show()
+    }
 
     override fun closeTab(tab: BrowserTab) {
         // Closing the last tab returns to the home page rather than leaving the app. The tab is

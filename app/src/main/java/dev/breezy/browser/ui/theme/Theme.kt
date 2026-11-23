@@ -2,6 +2,7 @@ package dev.breezy.browser.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Typography
@@ -68,16 +69,38 @@ private val BreezyType = Typography(
     labelSmall = BaseType.labelSmall.flex(FontWeight.Medium),
 )
 
+/** Whether the app UI is dark, from Settings → Appearance → Theme. */
+@Composable
+fun breezyDark(): Boolean = when (dev.breezy.browser.AppSettings.themeMode) {
+    dev.breezy.browser.ThemeMode.System -> isSystemInDarkTheme()
+    dev.breezy.browser.ThemeMode.Light -> false
+    dev.breezy.browser.ThemeMode.Dark -> true
+}
+
+/** Pure black surfaces for AMOLED screens; containers step up in small greys so cards stay visible. */
+private fun ColorScheme.amoled() = copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceDim = Color.Black,
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF080808),
+    surfaceContainer = Color(0xFF0F0F0F),
+    surfaceContainerHigh = Color(0xFF171717),
+    surfaceContainerHighest = Color(0xFF1F1F1F),
+    surfaceBright = Color(0xFF262626),
+)
+
 /** Material 3 Expressive theme: dynamic color on Android 12+, expressive motion everywhere. */
 @Composable
-fun BreezyTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun BreezyTheme(dark: Boolean = breezyDark(), content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val colors = when {
+    val base = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         dark -> BreezyDark
         else -> expressiveLightColorScheme()
     }
+    val colors = if (dark && dev.breezy.browser.AppSettings.pureBlack) base.amoled() else base
     MaterialExpressiveTheme(
         colorScheme = colors,
         motionScheme = MotionScheme.expressive(),

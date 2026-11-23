@@ -166,7 +166,7 @@ class BrowserTab(
             runCatching { WebViewCompat.setProfile(this, name) }
         }
         // Avoid a white flash before the first paint in dark mode.
-        setBackgroundColor(if (dark) 0xFF121212.toInt() else android.graphics.Color.WHITE)
+        setBackgroundColor(if (dark) (if (AppSettings.pureBlack) android.graphics.Color.BLACK else 0xFF121212.toInt()) else android.graphics.Color.WHITE)
         settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true

@@ -72,7 +72,16 @@ class MainActivity : ComponentActivity(), TabHost {
 
         val ui = ComposeView(this).also { uiView = it }.apply {
             setContent {
-                BreezyTheme {
+                val dark = dev.breezy.browser.ui.theme.breezyDark()
+                val black = dark && AppSettings.pureBlack
+                androidx.compose.runtime.LaunchedEffect(dark, black) {
+                    val bars = if (dark) androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+                    window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
+                        when { black -> android.graphics.Color.BLACK; dark -> 0xFF101418.toInt(); else -> 0xFFF8F9FF.toInt() }))
+                }
+                BreezyTheme(dark) {
                     BrowserScreen(
                         tabs = tabs,
                         onNewTab = { url, private -> tabs.newTab(url, private = private) },

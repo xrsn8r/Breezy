@@ -51,7 +51,9 @@ shield sheet recompiles on-device and caches the result.
     small proxy on `127.0.0.1` that resolves hostnames over DoH and tunnels connections unchanged
     (TLS stays end to end). Breezy's own downloads and list updates use it too.
 - **Download manager**: downloads split into up to 8 parallel connections (HTTP range requests),
-  with pause, resume (also after a restart), retry and share. Files are saved to `Download/Breezy`.
+  with pause, resume (also after a restart), retry and share. When a server rate-limits (HTTP 429/503)
+  every connection to it waits out the server's Retry-After, and stream downloads drop to fewer
+  parallel connections, then speed back up. Files are saved to `Download/Breezy`.
 - **Media detection**: the toolbar's download button shows a badge when a page plays a video or audio
   file or an HLS stream. The sheet lists sizes and qualities. HLS streams (including AES-128) are
   downloaded segment by segment in parallel and saved as one file. DRM-protected and stream-only
@@ -96,6 +98,9 @@ shield sheet recompiles on-device and caches the result.
   was dismissed) get unlocked automatically. The menu also has **Unlock scrolling** and
   **Page diagnostics**.
 - **Search engine**: Startpage by default, with DuckDuckGo, Brave Search and Google available.
+- **Theme**: System, Light or Dark, plus a **pure black (AMOLED)** option for dark theme.
+- **Settings in collapsible groups** (Appearance, Search & browsing, Privacy & security, Shields,
+  Filter lists, Downloads & media, Advanced), each showing a summary of its current values.
 - **Google Sans Flex** typeface, using a rounded cut for headings.
 
 ## Security

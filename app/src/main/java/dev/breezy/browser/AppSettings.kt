@@ -75,6 +75,9 @@ object AppSettings {
     /** Global default text zoom (percent). */
     var textZoom by mutableIntStateOf(100); private set
     var pullToRefresh by mutableStateOf(true); private set
+    // --- Appearance ---
+    var themeMode by mutableStateOf(ThemeMode.System); private set
+    var pureBlack by mutableStateOf(false); private set
     // --- Secure DNS ---
     var dnsProvider by mutableStateOf(dev.breezy.browser.data.DnsProvider.Off); private set
     var customDnsUrl by mutableStateOf(""); private set
@@ -112,6 +115,8 @@ object AppSettings {
         backgroundPlay = prefs.getBoolean("background_play", true)
         forceZoom = prefs.getBoolean("force_zoom", false)
         downloadConnections = prefs.getInt("download_connections", 4)
+        themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "System")!!) }.getOrDefault(ThemeMode.System)
+        pureBlack = prefs.getBoolean("pure_black", false)
         dnsProvider = runCatching { dev.breezy.browser.data.DnsProvider.valueOf(prefs.getString("dns_provider", "Off")!!) }
             .getOrDefault(dev.breezy.browser.data.DnsProvider.Off)
         customDnsUrl = prefs.getString("dns_custom_url", "")!!
@@ -176,6 +181,9 @@ object AppSettings {
     fun updateTextZoom(v: Int) { textZoom = v.coerceIn(50, 300); prefs.edit { putInt("text_zoom", textZoom) } }
     fun updatePullToRefresh(v: Boolean) { pullToRefresh = v; prefs.edit { putBoolean("pull_to_refresh", v) } }
     fun updateBackgroundPlay(v: Boolean) { backgroundPlay = v; prefs.edit { putBoolean("background_play", v) } }
+    fun updateThemeMode(v: ThemeMode) { themeMode = v; prefs.edit { putString("theme_mode", v.name) } }
+    fun updatePureBlack(v: Boolean) { pureBlack = v; prefs.edit { putBoolean("pure_black", v) } }
+
     fun updateDns(provider: dev.breezy.browser.data.DnsProvider, custom: String = customDnsUrl, strict: Boolean = dnsStrict) {
         dnsProvider = provider; customDnsUrl = custom.trim(); dnsStrict = strict
         prefs.edit { putString("dns_provider", provider.name); putString("dns_custom_url", customDnsUrl); putBoolean("dns_strict", strict) }
@@ -212,3 +220,5 @@ object AppSettings {
         prefs.edit { putBoolean("auto_update_lists", value) }
     }
 }
+
+enum class ThemeMode(val label: String) { System("System"), Light("Light"), Dark("Dark") }

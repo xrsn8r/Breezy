@@ -2,6 +2,10 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.5 (test build)
+- Fixed: the frosted search screen flickered over pages playing video. It now blurs a still
+  snapshot of the page taken as the search opens, so nothing behind it can flicker.
+
 ## 0.11.4 (test build)
 - **Frosted search screen**: the page behind the search box and suggestions is blurred, and the
   suggestions sit on frosted glass. Follows the Frosted surfaces setting.

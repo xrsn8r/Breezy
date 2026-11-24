@@ -7,6 +7,9 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.draw.blur
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -143,53 +146,50 @@ fun FrostedSheet(
 }
 
 /**
- * A full-screen frosted layer for overlays like the search screen: the whole page behind is
- * blurred by the compositor (FLAG_BLUR_BEHIND, Android 12+) and [content] draws on a translucent
- * surface. When frosting is off or unavailable, [content] is shown in place as before, so the
- * screen keeps working exactly as it did. [content] receives whether it's frosted.
+ * A frozen frosted backdrop for full-screen overlays (the search screen): a downscaled snapshot
+ * of the window taken just before the overlay opens, blurred in-app.
+ *
+ * Live full-screen compositor blur flickered over pages playing video (the video layer switches
+ * composition paths each frame); a still image can't flicker. Calls back on the main thread with
+ * null when frosting is off, before Android 12 (no RenderEffect blur), or if the copy fails.
  */
-@Composable
-fun FrostedScreen(onDismissRequest: () -> Unit, content: @Composable (frosted: Boolean) -> Unit) {
-    if (!AppSettings.frostedSurfaces || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-        content(false)
+fun captureBackdrop(activity: android.app.Activity?, onResult: (android.graphics.Bitmap?) -> Unit) {
+    val window = activity?.window
+    val decor = window?.decorView
+    if (!AppSettings.frostedSurfaces || Build.VERSION.SDK_INT < Build.VERSION_CODES.S || decor == null || decor.width == 0) {
+        onResult(null)
         return
     }
-    Dialog(
-        onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        val view = LocalView.current
-        val window = ((view as? DialogWindowProvider) ?: (view.parent as? DialogWindowProvider))?.window
-        val blurPx = with(LocalDensity.current) { 40.dp.roundToPx() }
-        val blurred = remember { mutableStateOf(false) }
-        DisposableEffect(window) {
-            if (window == null) return@DisposableEffect onDispose { }
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            window.setWindowAnimations(android.R.style.Animation_Toast) // quick fade
-            @Suppress("DEPRECATION")
-            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                window.attributes = window.attributes.apply { fitInsetsTypes = 0 }
-            }
-            val listener = Consumer<Boolean> { allowed ->
-                if (allowed) {
-                    window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    window.attributes = window.attributes.apply { blurBehindRadius = blurPx }
-                } else {
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                }
-                blurred.value = allowed
-            }
-            window.windowManager.addCrossWindowBlurEnabledListener(listener)
-            onDispose { window.windowManager.removeCrossWindowBlurEnabledListener(listener) }
-        }
-        CompositionLocalProvider(
-            LocalContentColor provides MaterialTheme.colorScheme.onSurface,
-            LocalFrosted provides blurred.value,
-        ) {
-            content(blurred.value)
-        }
+    // A quarter-size copy: cheap, and it's going to be blurred anyway.
+    val bitmap = android.graphics.Bitmap.createBitmap(
+        (decor.width / 4).coerceAtLeast(1), (decor.height / 4).coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888,
+    )
+    try {
+        android.view.PixelCopy.request(window, bitmap, { result ->
+            onResult(if (result == android.view.PixelCopy.SUCCESS) bitmap else null)
+        }, android.os.Handler(android.os.Looper.getMainLooper()))
+    } catch (e: Exception) {
+        onResult(null)
     }
+}
+
+/** Draws a captured backdrop, blurred and tinted, filling the parent. */
+@Composable
+fun FrostedBackdrop(image: androidx.compose.ui.graphics.ImageBitmap) {
+    androidx.compose.foundation.Image(
+        image,
+        contentDescription = null,
+        contentScale = androidx.compose.ui.layout.ContentScale.FillBounds,
+        modifier = Modifier.fillMaxSize().blur(36.dp),
+    )
+    androidx.compose.foundation.layout.Box(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f)),
+    )
+}
+
+/** The Activity behind a Compose context (contexts can be wrapped). */
+tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

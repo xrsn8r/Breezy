@@ -46,6 +46,7 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
@@ -70,6 +71,14 @@ fun BrowserScreen(
     var newTabMode by rememberSaveable { mutableStateOf(false) }
     var newTabPrivate by rememberSaveable { mutableStateOf(false) }
     var historyOpen by rememberSaveable { mutableStateOf(false) }
+    // Frozen, blurred snapshot of the page behind the search screen (null = solid background).
+    var omniboxBackdrop by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    fun showOmnibox() {
+        captureBackdrop(context.findActivity()) { bitmap ->
+            omniboxBackdrop = bitmap?.asImageBitmap()
+            omniboxOpen = true
+        }
+    }
     var bookmarksOpen by rememberSaveable { mutableStateOf(false) }
     var textSizeOpen by remember { mutableStateOf(false) }
     var speedOpen by remember { mutableStateOf(false) }
@@ -99,7 +108,7 @@ fun BrowserScreen(
     fun openNewTab(private: Boolean = false) {
         newTabMode = true
         newTabPrivate = private
-        omniboxOpen = true
+        showOmnibox()
     }
 
     fun navigate(input: String) {
@@ -181,10 +190,10 @@ fun BrowserScreen(
                 tabCount = tabs.tabs.size,
                 shieldsActive = shield.ready && shield.enabled && host !in shield.allowlist,
                 onShield = { shieldOpen = true },
-                onAddress = { omniboxOpen = true },
+                onAddress = { showOmnibox() },
                 onTabs = { tabsOpen = true },
                 onMenu = { menuOpen = true },
-                onSearch = { omniboxOpen = true },
+                onSearch = { showOmnibox() },
                 mediaCount = tab?.detectedMedia?.size ?: 0,
                 onMedia = { mediaOpen = true },
                 onTranslate = { tab?.let { if (it.translatedFrom != null) it.showOriginal() else it.translate() } },
@@ -206,17 +215,15 @@ fun BrowserScreen(
                 enter = fadeIn() + slideInVertically { it / 8 },
                 exit = fadeOut() + slideOutVertically { it / 8 },
             ) {
-                val closeOmnibox = { omniboxOpen = false; newTabMode = false; newTabPrivate = false }
-                FrostedScreen(onDismissRequest = closeOmnibox) {
-                    Omnibox(
-                        privateMode = (newTabMode && newTabPrivate) || (!newTabMode && tab?.isPrivate == true),
-                        initial = if (newTabMode) "" else tab?.url.orEmpty(),
-                        tabs = tabs.tabs,
-                        onGo = ::navigate,
-                        onSwitchTab = { tabs.select(it); omniboxOpen = false; newTabMode = false },
-                        onDismiss = closeOmnibox,
-                    )
-                }
+                Omnibox(
+                    privateMode = (newTabMode && newTabPrivate) || (!newTabMode && tab?.isPrivate == true),
+                    initial = if (newTabMode) "" else tab?.url.orEmpty(),
+                    tabs = tabs.tabs,
+                    onGo = ::navigate,
+                    onSwitchTab = { tabs.select(it); omniboxOpen = false; newTabMode = false },
+                    onDismiss = { omniboxOpen = false; newTabMode = false; newTabPrivate = false },
+                    backdrop = omniboxBackdrop,
+                )
             }
 
             // --- Reader mode -------------------------------------------------------------------

@@ -1,6 +1,8 @@
 package dev.breezy.browser.ui
 
 import android.app.Application
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -15,10 +17,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The search screen still works inside the frosted full-screen window. */
+/** The search screen works over a frosted (snapshot) backdrop. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
-class FrostedScreenTest {
+class OmniboxBackdropTest {
     @get:Rule val compose = createComposeRule()
 
     @Before fun setUp() {
@@ -27,13 +29,12 @@ class FrostedScreenTest {
         dev.breezy.browser.data.Bookmarks.init(app)
     }
 
-    @Test fun omniboxInFrostedScreen() {
+    @Test fun omniboxWithBackdrop() {
         var closed = 0
+        val snapshot = Bitmap.createBitmap(100, 200, Bitmap.Config.ARGB_8888).asImageBitmap()
         compose.setContent {
             BreezyTheme(dark = true) {
-                FrostedScreen(onDismissRequest = { closed++ }) {
-                    Omnibox(privateMode = true, initial = "", tabs = emptyList(), onGo = {}, onSwitchTab = {}, onDismiss = { closed++ })
-                }
+                Omnibox(privateMode = true, initial = "", tabs = emptyList(), onGo = {}, onSwitchTab = {}, onDismiss = { closed++ }, backdrop = snapshot)
             }
         }
         compose.onNodeWithContentDescription("Close").performClick()

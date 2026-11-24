@@ -3,6 +3,7 @@ package dev.breezy.browser.ui
 import android.app.Application
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -81,6 +82,24 @@ class ScreenshotTest {
     @Test fun bookmarks() {
         compose.setContent { BreezyTheme(dark = true) { BookmarksScreen(onOpen = {}, onDismiss = {}) } }
         shot("bookmarks")
+    }
+
+    @Test fun omniboxFrosted() {
+        // A colourful stand-in for a page snapshot.
+        val bmp = android.graphics.Bitmap.createBitmap(206, 600, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bmp)
+        val p = android.graphics.Paint()
+        p.shader = android.graphics.LinearGradient(0f, 0f, 206f, 600f, intArrayOf(0xFF7A2CFF.toInt(), 0xFFFF3D7F.toInt(), 0xFFFFCF3D.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, 206f, 600f, p)
+        p.shader = null; p.color = 0xFF19C37D.toInt(); c.drawCircle(60f, 120f, 40f, p)
+        p.color = 0xFF3FB5FF.toInt(); c.drawCircle(150f, 300f, 55f, p)
+        compose.setContent {
+            BreezyTheme(dark = true) {
+                Omnibox(initial = "https://example.com/", tabs = emptyList(), onGo = {}, onSwitchTab = {}, onDismiss = {},
+                    backdrop = bmp.asImageBitmap())
+            }
+        }
+        shot("omnibox-frosted")
     }
 
     @Test fun downloads() {

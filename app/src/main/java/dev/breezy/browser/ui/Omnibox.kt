@@ -69,16 +69,23 @@ fun Omnibox(
     onSwitchTab: (BrowserTab) -> Unit,
     onDismiss: () -> Unit,
     privateMode: Boolean = false,
+    /** Blurred snapshot of the page to show behind the search screen; null for a solid background. */
+    backdrop: androidx.compose.ui.graphics.ImageBitmap? = null,
 ) {
     var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    // Frosted (blurred page behind): a translucent surface; otherwise the usual solid one.
-    val frosted = LocalFrosted.current
+    // Frosted: the page's blurred snapshot behind translucent rows; otherwise the usual solid surface.
+    val frosted = backdrop != null
     val rowColor = if (frosted) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.surfaceContainer
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+    if (backdrop != null) FrostedBackdrop(backdrop)
+    androidx.compose.runtime.CompositionLocalProvider(LocalFrosted provides frosted) {
     Surface(
-        color = if (frosted) MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.62f) else MaterialTheme.colorScheme.surfaceContainer,
+        color = if (frosted) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
+        // A transparent Surface can't derive a content colour; without this, icons turn black.
+        contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.fillMaxSize(),
     ) {
         // The text field sits at the bottom, just above the keyboard (where the toolbar was), with
@@ -195,6 +202,8 @@ fun Omnibox(
                 )
             }
         }
+    }
+    }
     }
 }
 

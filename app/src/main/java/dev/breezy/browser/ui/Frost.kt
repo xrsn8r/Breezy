@@ -77,9 +77,12 @@ fun FrostedSheet(
         val enabled = AppSettings.frostedSurfaces
         val blurred = remember { mutableStateOf(false) }
         val cornerPx = with(density) { 28.dp.toPx() }
+        val strokePx = with(density) { 1.dp.roundToPx() }.coerceAtLeast(1)
+        // A thin light edge around the sheet (dark edge in light theme), like glass catching light.
+        val edge = if (base.luminance() < 0.5f) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.10f)
         val blurPx = with(density) { 36.dp.roundToPx() }
 
-        DisposableEffect(window, enabled, base) {
+        DisposableEffect(window, enabled, base, edge) {
             if (window == null) return@DisposableEffect onDispose { }
             window.setGravity(Gravity.BOTTOM)
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -96,6 +99,7 @@ fun FrostedSheet(
                 window.setBackgroundDrawable(GradientDrawable().apply {
                     cornerRadii = floatArrayOf(cornerPx, cornerPx, cornerPx, cornerPx, 0f, 0f, 0f, 0f)
                     setColor(base.copy(alpha = if (blur) 0.6f else 1f).toArgb())
+                    setStroke(strokePx, edge.toArgb())
                 })
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setBackgroundBlurRadius(if (blur) blurPx else 0)
             }

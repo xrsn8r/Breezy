@@ -2,6 +2,9 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.2 (test build)
+- A thin highlight edge around the menu and tab switcher, like light catching the glass.
+
 ## 0.11.1 (test build)
 - Cards and buttons inside the menu and tab switcher are frosted too, as darker translucent glass.
 - Fixed: the tab count and private-tab icon in the tab switcher were black in dark mode.

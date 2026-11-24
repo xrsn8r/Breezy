@@ -409,13 +409,23 @@ class BrowserTab(
         }
 
         @JavascriptInterface
+        fun sponsorSkipped(category: String, seconds: Int) {
+            dev.breezy.browser.data.CrashReport.note("sponsorblock skipped $category (${seconds}s)")
+        }
+
+        @JavascriptInterface
         fun sponsorEnabled(): Boolean = AppSettings.sponsorBlock && AppSettings.sponsorCategories.isNotEmpty()
 
         @JavascriptInterface
         fun sponsorSegments(videoId: String) {
             if (!Regex("[\\w-]{11}").matches(videoId)) return
             appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val json = runCatching { dev.breezy.browser.data.SponsorBlock.segments(videoId) }.getOrNull() ?: return@launch
+                val result = runCatching { dev.breezy.browser.data.SponsorBlock.segments(videoId) }
+                val json = result.getOrElse {
+                    dev.breezy.browser.data.CrashReport.note("sponsorblock lookup failed: ${it.javaClass.simpleName}: ${it.message}")
+                    return@launch
+                }
+                dev.breezy.browser.data.CrashReport.note("sponsorblock: ${org.json.JSONArray(json).length()} segments")
                 main.post {
                     webView.evaluateJavascript("window.__breezySB&&__breezySB.segments('$videoId',$json)", null)
                 }

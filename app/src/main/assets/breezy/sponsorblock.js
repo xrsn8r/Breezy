@@ -40,13 +40,15 @@
     if (!toast) {
       toast = document.createElement('div');
       toast.setAttribute('style', [
-        'position:fixed', 'left:50%', 'bottom:96px', 'transform:translateX(-50%)', 'z-index:2147483647',
+        'position:fixed', 'left:50%', 'bottom:15%', 'transform:translateX(-50%)', 'z-index:2147483647',
         'background:rgba(32,33,36,.94)', 'color:#fff', 'font:500 14px/1.3 Roboto,system-ui,sans-serif',
         'padding:10px 8px 10px 16px', 'border-radius:12px', 'display:flex', 'align-items:center', 'gap:12px',
         'box-shadow:0 4px 16px rgba(0,0,0,.35)', 'max-width:90vw',
       ].join(';'));
-      document.body.appendChild(toast);
     }
+    // In fullscreen only the fullscreen element is shown, so the toast has to live inside it.
+    var parent = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+    if (toast.parentNode !== parent) parent.appendChild(toast);
     toast.textContent = '';
     var label = document.createElement('span');
     label.textContent = text;
@@ -62,21 +64,35 @@
   function hide() { if (toast) toast.style.display = 'none'; }
 
   // --- Skipping ----------------------------------------------------------------------------------
-  document.addEventListener('timeupdate', function (e) {
-    var v = e.target;
-    if (!(v instanceof HTMLVideoElement) || !segments.length) return;
-    // Don't act on ads that play in the same element (their duration differs from the video's).
+  // Checked from timeupdate (window capture, before the page's own listeners can stop it) and
+  // from a 250 ms poll of the playing <video>, so a page swallowing events can't defeat it.
+  function largestVideo() {
+    var vids = document.getElementsByTagName('video'), best = null;
+    for (var i = 0; i < vids.length; i++) {
+      var v = vids[i];
+      if (!best || (!v.paused && best.paused) || v.clientWidth * v.clientHeight > best.clientWidth * best.clientHeight) best = v;
+    }
+    return best;
+  }
+  function maybeSkip(v) {
+    if (!v || !segments.length || v.readyState < 1) return;
     var t = v.currentTime;
     for (var i = 0; i < segments.length; i++) {
       var s = segments[i];
       if (skipped[s.uuid] || t < s.start || t >= s.end - 0.25) continue;
-      if (s.duration && v.duration && Math.abs(v.duration - s.duration) > 4) continue;
+      // An ad playing in the same element is much shorter than the video the segment belongs to.
+      if (s.duration > 0 && v.duration > 0 && isFinite(v.duration) && v.duration < s.duration * 0.5) continue;
       skipped[s.uuid] = true;
       var from = t;
       v.currentTime = s.end;
+      try { bridge.sponsorSkipped && bridge.sponsorSkipped(s.category, Math.round(s.end - from)); } catch (e) {}
       showToast('Skipped ' + (LABELS[s.category] || 'segment'), function () { v.currentTime = Math.max(0, from - 0.1); });
     }
+  }
+  window.addEventListener('timeupdate', function (e) {
+    if (e.target instanceof HTMLVideoElement) maybeSkip(e.target);
   }, true);
+  setInterval(function () { if (segments.length) maybeSkip(largestVideo()); }, 250);
 
   window.addEventListener('yt-navigate-finish', check);
   window.addEventListener('popstate', check);

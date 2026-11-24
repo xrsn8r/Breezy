@@ -2,6 +2,12 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.9.1
+- **SponsorBlock fixed**: segments are now caught even when YouTube's player hides playback
+  events from other scripts, the "Skipped" bar shows in fullscreen, and real segments are no
+  longer ignored when the video's length differs slightly from SponsorBlock's records.
+- SponsorBlock lookups and skips are listed in Settings → Advanced → Share diagnostics.
+
 ## 0.9.0
 - **SponsorBlock for YouTube**: sponsors, self-promotion and subscribe reminders are skipped
   automatically, with **Undo**. Choose categories (intros, outros, previews, filler...) in

@@ -214,8 +214,8 @@ android {
         applicationId = "dev.breezy.browser"
         minSdk = minSdkVersion
         targetSdk = 36
-        versionCode = 35
-        versionName = "0.10.5"
+        versionCode = 36
+        versionName = "0.10.6"
     }
 
     // Optional release signing from the environment (CI secrets); falls back to the debug key.

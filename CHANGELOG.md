@@ -2,6 +2,11 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.10.6
+- **Update checks no longer hit GitHub's rate limit.** Breezy finds the newest release through
+  GitHub's normal release page instead of its API (which allows only 60 checks an hour), and
+  explains the limit in plain words if it's ever reached.
+
 ## 0.10.5
 - **Fixed: menu items sometimes ignored taps.** The menu could be dragged between half and full
   height, and small finger movements while tapping were taken as drags, swallowing the tap

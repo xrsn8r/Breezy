@@ -21,3 +21,12 @@ class UpdaterNotesTest {
         org.junit.Assert.assertEquals("• Faster tabs\n• Fix x", Updater.notes(body))
     }
 }
+
+class ChangelogSectionTest {
+    @Test fun picksVersion() {
+        val log = "# Changelog\n\n## 0.10.5\n- **Fixed** menu taps\n- Second\n\n## 0.10.4\n- Older\n"
+        org.junit.Assert.assertEquals("• Fixed menu taps\n• Second", Updater.changelogSection(log, "0.10.5"))
+        org.junit.Assert.assertEquals("• Older", Updater.changelogSection(log, "0.10.4"))
+        org.junit.Assert.assertEquals("", Updater.changelogSection(log, "9.9.9"))
+    }
+}

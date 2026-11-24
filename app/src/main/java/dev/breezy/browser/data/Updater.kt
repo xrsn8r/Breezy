@@ -73,7 +73,11 @@ object Updater {
             prefs.edit { putLong("last_check", System.currentTimeMillis()); putString("known_version", r?.version) }
             if (r != null && isNewer(r.version, BuildConfig.VERSION_NAME)) Status.Available(r) else Status.UpToDate
         } catch (e: Exception) {
-            Status.Failed("Couldn't check for updates (${e.message ?: "network error"})")
+            val msg = e.message.orEmpty()
+            Status.Failed(
+                if (msg == "HTTP 403" || msg == "HTTP 429") "GitHub is limiting update checks right now. Try again in a little while"
+                else "Couldn't check for updates (${msg.ifEmpty { "network error" }})",
+            )
         }
         return status
     }
@@ -121,7 +125,46 @@ object Updater {
         return ok
     }
 
+    /**
+     * The latest release, found without GitHub's API (which allows only 60 unauthenticated
+     * requests an hour per address): github.com/<repo>/releases/latest redirects to the newest
+     * tag, release files have predictable names, and the notes come from CHANGELOG.md at that tag.
+     * Falls back to the API if the redirect trick ever stops working.
+     */
     private suspend fun latest(): Release? = withContext(Dispatchers.IO) {
+        runCatching { latestFromRedirect() }.getOrNull() ?: latestFromApi()
+    }
+
+    private fun latestFromRedirect(): Release? {
+        val conn = URI("https://github.com/$REPO/releases/latest").toURL().openConnection() as HttpURLConnection
+        conn.instanceFollowRedirects = false
+        conn.connectTimeout = 10_000; conn.readTimeout = 15_000
+        conn.setRequestProperty("User-Agent", "Breezy/${BuildConfig.VERSION_NAME}")
+        val location = try {
+            if (conn.responseCode !in 300..399) return null
+            conn.getHeaderField("Location") ?: return null
+        } finally {
+            conn.disconnect()
+        }
+        val tag = location.substringAfter("/releases/tag/", "").substringBefore('?').takeIf { it.startsWith("v") } ?: return null
+        val version = tag.removePrefix("v")
+        val apkName = "Breezy-$tag-arm64-v8a.apk"
+        val base = "https://github.com/$REPO/releases/download/$tag"
+        val notes = runCatching {
+            changelogSection(fetch("https://raw.githubusercontent.com/$REPO/$tag/CHANGELOG.md"), version)
+        }.getOrDefault("")
+        return Release(version, "https://github.com/$REPO/releases/tag/$tag", "$base/$apkName", apkName, "$base/SHA256SUMS.txt", notes)
+    }
+
+    /** One version's section of CHANGELOG.md as plain text. */
+    fun changelogSection(changelog: String, version: String): String {
+        val lines = changelog.lines()
+        val start = lines.indexOfFirst { it.trim().removePrefix("##").trim().removePrefix("v") == version && it.startsWith("## ") }
+        if (start < 0) return ""
+        return notes("## What's new\n" + lines.drop(start + 1).takeWhile { !it.startsWith("## ") }.joinToString("\n"))
+    }
+
+    private fun latestFromApi(): Release? {
         val json = JSONObject(fetch("https://api.github.com/repos/$REPO/releases/latest", github = true))
         val version = json.getString("tag_name").removePrefix("v")
         val assets = json.getJSONArray("assets")
@@ -134,7 +177,7 @@ object Updater {
             if (name.endsWith(".apk") && (apk == null || "arm64" in name)) apk = name to url
             if (name == "SHA256SUMS.txt") sums = url
         }
-        apk?.let { Release(version, json.optString("html_url"), it.second, it.first, sums, notes(json.optString("body"))) }
+        return apk?.let { Release(version, json.optString("html_url"), it.second, it.first, sums, notes(json.optString("body"))) }
     }
 
     private fun fetch(url: String, github: Boolean = false): String {

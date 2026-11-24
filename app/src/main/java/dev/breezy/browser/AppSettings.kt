@@ -65,8 +65,6 @@ object AppSettings {
      * window backdrop forces offscreen rendering, which WebView doesn't always survive.
      */
     var frostedSurfaces by mutableStateOf(true); private set
-    var frostedToolbar by mutableStateOf(false)
-        private set
 
     // --- Privacy / browsing ---
     var httpsOnly by mutableStateOf(true); private set
@@ -118,7 +116,6 @@ object AppSettings {
         prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         darkWebPages = prefs.getBoolean("dark_web_pages", true)
         forceDarkAllSites = prefs.getBoolean("force_dark_all_sites", false)
-        frostedToolbar = prefs.getBoolean("frosted_toolbar", false)
         frostedSurfaces = prefs.getBoolean("frosted_surfaces", true)
         identifyAsChrome = prefs.getBoolean("identify_as_chrome", true)
         httpsOnly = prefs.getBoolean("https_only", true)
@@ -196,10 +193,6 @@ object AppSettings {
 
     fun updateFrostedSurfaces(v: Boolean) { frostedSurfaces = v; prefs.edit { putBoolean("frosted_surfaces", v) } }
 
-    fun updateFrostedToolbar(value: Boolean) {
-        frostedToolbar = value
-        prefs.edit { putBoolean("frosted_toolbar", value) }
-    }
 
     fun updateHttpsOnly(v: Boolean) { httpsOnly = v; prefs.edit { putBoolean("https_only", v) } }
     fun updateStripTracking(v: Boolean) { stripTracking = v; prefs.edit { putBoolean("strip_tracking", v) } }

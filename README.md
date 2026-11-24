@@ -119,8 +119,11 @@ shield sheet recompiles on-device and caches the result.
   Lists auto-update weekly on Wi-Fi.
 - **Dark web pages** (default on): WebViews get a dark-themed context, so sites see
   `prefers-color-scheme: dark` and anything without a dark style is darkened automatically.
-- **Frosted, movable toolbar**: long-press and drag it up or down, and the position is remembered. The
-  blur is real backdrop blur on Android 16+ (Haze) and a translucent tint on older versions.
+- **Frosted glass UI**: the toolbar, menu, tab switcher, Shields and media sheets blur the page
+  behind them live (Haze, Android 16+), with translucent cards and a soft highlight edge; the page
+  above a sheet stays sharp. The search screen sits on a blurred snapshot of the page (Android 12+).
+  One switch: Settings → Appearance → Frosted surfaces.
+- **Movable toolbar**: long-press and drag it up or down, and the position is remembered.
 - **Scroll-lock repair**: pages left locked by a consent dialog or paywall that never rendered (or
   was dismissed) get unlocked automatically. The menu also has **Unlock scrolling** and
   **Page diagnostics**.

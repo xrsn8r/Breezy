@@ -171,10 +171,8 @@ fun SettingsScreen(
                         },
                         colors = cardItemColors(),
                     ) { Text("Force dark on all sites") }
-                    ToggleRow("Frosted surfaces", "Blur the page behind menus and sheets (Android 12+). Off in battery saver",
+                    ToggleRow("Frosted surfaces", "Blur the page behind the toolbar, menus, sheets and search (Android 16+; search from Android 12)",
                         AppSettings.frostedSurfaces, AppSettings::updateFrostedSurfaces)
-                    ToggleRow("Frosted toolbar blur", "Real blur behind the toolbar (Android 16+). Turn off if some pages render blank or half-drawn",
-                        AppSettings.frostedToolbar, AppSettings::updateFrostedToolbar)
                     ListItem(
                         supportingContent = { Text("Long-press the toolbar and drag it up or down") },
                         trailingContent = {

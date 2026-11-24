@@ -2,6 +2,22 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 1.0.0
+Breezy 1.0: a face-lift on top of everything from the 0.x releases.
+
+- **Frosted glass everywhere**: the menu, tab switcher, Shields and media sheets blur the page
+  behind them live, like the toolbar, with translucent cards and a highlight edge that fades down
+  the sides. The page above a sheet stays sharp. The search screen sits on a blurred snapshot of
+  the page. Real blur on Android 16+; solid on older versions.
+- **One Frosted surfaces switch** (Settings → Appearance) now covers the toolbar too, and it's on
+  by default.
+- Tap the empty space above search suggestions to go back to the page.
+- On the home page, press Back twice to exit.
+- Fixed a crash when Breezy closed while media played in the background.
+- Fixed a possible crash if reader mode's page crashed, and reader mode no longer leaks memory.
+- Code cleanup: removed temporary diagnostics, unused code and old blur code; all tests and
+  Android's lint checks pass.
+
 ## 0.11.9 (test build)
 - Tapping the empty space above the search suggestions goes back to the page.
 - On the home page, press Back twice to exit ("Press back again to exit").

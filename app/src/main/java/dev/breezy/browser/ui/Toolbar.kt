@@ -279,7 +279,8 @@ private fun FrostedToolbar(
         modifier = Modifier
             .clip(shape)
             .then(
-                if (AppSettings.frostedToolbar) Modifier.hazeBlur(input = HazeInput.Backdrop(hazeState), style = glass)
+                // Real blur needs Android 16 (API 36); older versions get the tinted surface below.
+                if (AppSettings.frostedSurfaces && android.os.Build.VERSION.SDK_INT >= 36) Modifier.hazeBlur(input = HazeInput.Backdrop(hazeState), style = glass)
                 // No backdrop sampling at all: a solid, slightly translucent surface.
                 else Modifier.background(tint.copy(alpha = 0.94f)),
             )

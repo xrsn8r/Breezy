@@ -101,12 +101,6 @@ class TabManager(private val context: Context, private val host: TabHost) {
         select(closed.tab)
     }
 
-    /** Drop the undo slot now (e.g. the snackbar was dismissed). */
-    fun finalizeClose() {
-        val closed = recentlyClosed ?: return
-        recentlyClosed = null
-        closed.tab.destroy()
-    }
 
     fun closeAll() {
         recentlyClosed?.tab?.destroy()

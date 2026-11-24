@@ -62,9 +62,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -103,15 +100,9 @@ fun MenuSheet(
     val itemModifier = Modifier.clip(RoundedCornerShape(16.dp))
     var pageOpen by rememberSaveable { mutableStateOf(true) }
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
-    // Its own bottom window with no drag gestures: earlier, small finger movements while tapping
-    // were taken as drags of the sheet and swallowed the tap. Close with a tap outside or Back.
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        dev.breezy.browser.data.CrashReport.note("menu opened")
-        onDispose { dev.breezy.browser.data.CrashReport.note("menu closed") }
-    }
     BreezySheet(hazeState, onDismissRequest = onDismiss) {
         Column(
-            Modifier.logTouches { "frosted" }.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
             // --- Most-used actions --------------------------------------------------------------
@@ -171,13 +162,13 @@ fun MenuSheet(
             ListItem(
                 leadingContent = { Icon(Icons.Rounded.Bookmarks, null) },
                 colors = ListItemDefaults.colors(containerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerLow)),
-                modifier = itemModifier.clickable { tapped("Bookmarks"); onBookmarks() },
+                modifier = itemModifier.clickable (onClick = onBookmarks),
             ) { Text("Bookmarks") }
             if (BrowserTab.multiProfileSupported) {
                 ListItem(
                     leadingContent = { Icon(Icons.Rounded.VisibilityOff, null) },
                     colors = ListItemDefaults.colors(containerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerLow)),
-                modifier = itemModifier.clickable { tapped("New private tab"); onNewPrivateTab() },
+                modifier = itemModifier.clickable (onClick = onNewPrivateTab),
                 ) { Text("New private tab") }
             }
 
@@ -217,7 +208,7 @@ fun MenuSheet(
             ListItem(
                 leadingContent = { Icon(Icons.Rounded.Settings, null) },
                 colors = ListItemDefaults.colors(containerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerLow)),
-                modifier = itemModifier.clickable { tapped("Settings"); onSettings() },
+                modifier = itemModifier.clickable (onClick = onSettings),
             ) { Text("Settings") }
         }
     }
@@ -226,7 +217,7 @@ fun MenuSheet(
 @Composable
 private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
     Surface(
-        onClick = { tapped(label); onClick() },
+        onClick = onClick,
         shape = RoundedCornerShape(24.dp),
         color = frostedFill(MaterialTheme.colorScheme.secondaryContainer, tint = MaterialTheme.colorScheme.secondaryContainer),
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -260,7 +251,7 @@ private fun MenuGroup(
                 leadingContent = { Icon(icon, null) },
                 trailingContent = { Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.rotate(rotation)) },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                modifier = Modifier.clickable { tapped(title); onToggle(!open) },
+                modifier = Modifier.clickable { onToggle(!open) },
             ) { Text(title, style = MaterialTheme.typography.titleMedium) }
             AnimatedVisibility(visible = open) {
                 Column(Modifier.padding(bottom = 8.dp)) { content() }
@@ -280,34 +271,8 @@ private fun MenuRow(
         supportingContent = subtitle?.let { { Text(it) } },
         leadingContent = { Icon(icon, null) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { tapped(title); onClick() },
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
     ) { Text(title) }
-}
-
-/** Diagnostics trail: which menu item was tapped (its label only). */
-private fun tapped(label: String) = dev.breezy.browser.data.CrashReport.note("menu tap: $label")
-
-/**
- * Diagnostics trail: every touch on the menu, with what happened to it. Taps on rows were
- * sometimes ignored; this records how many pointers Compose thought were down, whether the lift
- * was consumed by something else or landed outside, and whether the sheet was still animating.
- */
-private fun Modifier.logTouches(sheet: () -> String): Modifier = pointerInput(Unit) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-        val atDown = currentEvent.changes.count { it.pressed }
-        var outcome = "lost"
-        while (true) {
-            val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
-            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-            if (!ch.pressed) {
-                val others = ev.changes.count { it.id != down.id && it.pressed }
-                outcome = "up consumed=${ch.isConsumed} out=${ch.position.x < 0 || ch.position.y < 0 || ch.position.x > size.width || ch.position.y > size.height} othersDown=$others"
-                break
-            }
-        }
-        dev.breezy.browser.data.CrashReport.note("menu touch: pointersAtDown=$atDown $outcome sheet=${sheet()}")
-    }
 }
 
 /** Plain-text list URLs (…/list.txt, raw?file=…txt) get "Add page as filter list". */

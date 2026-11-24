@@ -2,7 +2,6 @@ package dev.breezy.browser.ui
 
 import android.text.format.DateUtils
 import android.text.format.Formatter
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

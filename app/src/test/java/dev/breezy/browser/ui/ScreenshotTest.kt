@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -40,6 +40,7 @@ class ScreenshotTest {
         AppSettings.init(app)
         dev.breezy.browser.data.Favicons.init(app)
         dev.breezy.browser.data.Bookmarks.init(app)
+        dev.breezy.browser.data.History.init(app)
         dev.breezy.browser.data.Bookmarks.add("Breezy releases", "https://github.com/xrsn8r/Breezy/releases", "Dev")
         dev.breezy.browser.data.Bookmarks.add("Example", "https://example.com")
     }

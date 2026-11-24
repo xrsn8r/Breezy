@@ -26,8 +26,6 @@ object NativeShield {
     /** Load Brave/uBO scriptlet + redirect resources (resources.json). Returns count or -1. */
     @JvmStatic external fun loadResources(json: ByteArray): Int
 
-    @JvmStatic external fun isLoaded(): Boolean
-
     /**
      * Check a request. Returns `null` to allow, `""` to block, or a `data:` URL to serve instead
      * (e.g. a neutered analytics script). The resource type is inferred natively from the URL,

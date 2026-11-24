@@ -2,7 +2,6 @@ package dev.breezy.browser.downloads
 
 import android.app.Activity
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.net.toUri
@@ -15,7 +14,7 @@ object FileOpener {
     private var pendingApk: Long? = null
 
     fun open(activity: Activity, job: DownloadJob) {
-        if (Downloads.isApk(job) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+        if (Downloads.isApk(job) &&
             !activity.packageManager.canRequestPackageInstalls()
         ) {
             pendingApk = job.id
@@ -34,7 +33,7 @@ object FileOpener {
     fun resumePending(activity: Activity) {
         val id = pendingApk ?: return
         pendingApk = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.packageManager.canRequestPackageInstalls()) return
+        if (!activity.packageManager.canRequestPackageInstalls()) return
         Downloads.get(id)?.let { launch(activity, it) }
     }
 

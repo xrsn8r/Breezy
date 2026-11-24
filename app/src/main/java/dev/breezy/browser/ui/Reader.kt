@@ -68,6 +68,7 @@ fun ReaderScreen(article: BrowserTab.Article, onClose: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx -> readerWebView(ctx).also { it.loadDataWithBaseURL(article.url, html, "text/html", "utf-8", null) } },
                     update = { it.settings.textZoom = zoom },
+                    onRelease = { it.destroy() }, // free the reader's WebView when reader mode closes
                 )
             }
         }
@@ -81,6 +82,7 @@ private fun readerWebView(context: android.content.Context) = WebView(context).a
     settings.allowFileAccess = false
     settings.allowContentAccess = false
     webViewClient = object : WebViewClient() {
+        @SuppressLint("ResourceType") // a font resource is a plain TTF file; reading its bytes is intended
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
             if (request.url.toString() == FONT_URL) {
                 return WebResourceResponse("font/ttf", null, view.resources.openRawResource(R.font.google_sans_flex))
@@ -90,6 +92,13 @@ private fun readerWebView(context: android.content.Context) = WebView(context).a
 
         // Links open in the real browser tab, not inside the reader.
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = true
+
+        // Without this, a crashed or killed reader renderer would take the whole app down.
+        override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+            (view.parent as? android.view.ViewGroup)?.removeView(view)
+            view.destroy()
+            return true
+        }
     }
 }
 

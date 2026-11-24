@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -123,7 +122,6 @@ class BrowserTab(
     /** The page's declared language when it differs from the user's, to offer a translation. */
     var translateOffer by mutableStateOf<String?>(null)
         private set
-    private val declinedTranslations = HashSet<String>()
 
     fun translate() {
         // translateOffer is kept, so the toolbar button stays to switch back and forth.
@@ -137,10 +135,6 @@ class BrowserTab(
         webView.evaluateJavascript("window.__breezyTranslate&&__breezyTranslate.restore()", null)
     }
 
-    fun declineTranslate() {
-        translateOffer?.let { declinedTranslations += it.substringBefore('-').lowercase() }
-        translateOffer = null
-    }
 
     /**
      * Decide whether to show the translate button. The page's own text decides (sites often
@@ -161,8 +155,7 @@ class BrowserTab(
                 val detected = dev.breezy.browser.data.Translator.detect(appContext, sample)
                 val lang = detected ?: declared
                 val target = dev.breezy.browser.data.Translator.target(AppSettings.translateTo)
-                val offer = dev.breezy.browser.data.Translator.differs(lang, target) &&
-                    lang.substringBefore('-').lowercase() !in declinedTranslations
+                val offer = dev.breezy.browser.data.Translator.differs(lang, target)
                 main.post {
                     if (url != checkedUrl || translatedFrom != null) return@post
                     translateOffer = if (offer) lang else null

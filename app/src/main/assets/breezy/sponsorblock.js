@@ -31,7 +31,7 @@
     if (id && /^[\w-]{11}$/.test(id)) send({ t: 'sb', id: id });
   }
 
-  window.__breezySB = true;
+  Object.defineProperty(window, '__breezySB', { value: true });
   // Segments arrive as a reply on the same channel.
   channel.addEventListener('message', function (e) {
     var m; try { m = JSON.parse(e.data); } catch (_) { return; }

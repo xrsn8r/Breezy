@@ -102,7 +102,7 @@
     if (document.body) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
   }
 
-  window.__breezyTranslate = {
+  var api = {
     start: function () {
       if (active) return;
       active = true;
@@ -130,5 +130,6 @@
       originals.clear();
     },
   };
-  window.__breezyTranslate.start();
+  Object.defineProperty(window, '__breezyTranslate', { value: api, configurable: true });
+  api.start();
 })();

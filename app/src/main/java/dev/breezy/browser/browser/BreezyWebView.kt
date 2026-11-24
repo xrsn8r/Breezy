@@ -15,6 +15,11 @@ import android.webkit.WebView
 class BreezyWebView(context: Context) : WebView(context) {
     var keepVisible = false
 
+    /** Everything Breezy injects goes through here, so its names are this session's random ones. */
+    override fun evaluateJavascript(script: String, resultCallback: android.webkit.ValueCallback<String>?) {
+        super.evaluateJavascript(Obscure.js(script), resultCallback)
+    }
+
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(if (keepVisible && visibility != View.VISIBLE) View.VISIBLE else visibility)
     }

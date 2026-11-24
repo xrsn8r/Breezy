@@ -279,10 +279,10 @@ class BrowserTab(
         overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
 
         if (AppSettings.identifyAsChrome) presentAsChrome(settings)
-        addJavascriptInterface(CosmeticBridge(), "BreezyShield")
-        addJavascriptInterface(PageBridge(), "BreezyPage")
+        addJavascriptInterface(CosmeticBridge(), Obscure.shield)
+        addJavascriptInterface(PageBridge(), Obscure.page)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            WebViewCompat.addWebMessageListener(this, "BreezyHost", setOf("*")) { _, message, sourceOrigin, isMainFrame, reply ->
+            WebViewCompat.addWebMessageListener(this, Obscure.host, setOf("*")) { _, message, sourceOrigin, isMainFrame, reply ->
                 onHostMessage(message.data, sourceOrigin, isMainFrame, reply)
             }
         }
@@ -589,11 +589,11 @@ class BrowserTab(
     fun destroy() {
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.stopLoading()
-        webView.removeJavascriptInterface("BreezyShield")
+        webView.removeJavascriptInterface(Obscure.shield)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            runCatching { WebViewCompat.removeWebMessageListener(webView, "BreezyHost") }
+            runCatching { WebViewCompat.removeWebMessageListener(webView, Obscure.host) }
         }
-        webView.removeJavascriptInterface("BreezyPage")
+        webView.removeJavascriptInterface(Obscure.page)
         scriptlets.values.forEach { it?.remove() }
         scriptlets.clear()
         webView.destroy()
@@ -1191,7 +1191,7 @@ class BrowserTab(
         val wrapped = "(function(){if(window.__breezyScriptlets)return;" +
             "Object.defineProperty(window,'__breezyScriptlets',{value:true});try{\n$code\n}catch(e){}})();"
         scriptlets[origin] = runCatching {
-            WebViewCompat.addDocumentStartJavaScript(webView, wrapped, setOf(origin))
+            WebViewCompat.addDocumentStartJavaScript(webView, Obscure.js(wrapped), setOf(origin))
         }.getOrNull()
         if (scriptlets[origin] != null) synchronized(scriptletOrigins) { scriptletOrigins += origin }
     }
@@ -1239,7 +1239,7 @@ class BrowserTab(
         }
 
         fun asset(context: Context, path: String): String = synchronized(scripts) {
-            scripts.getOrPut(path) { context.assets.open(path).bufferedReader().use { it.readText() } }
+            scripts.getOrPut(path) { Obscure.js(context.assets.open(path).bufferedReader().use { it.readText() }) }
         }
 
         /**

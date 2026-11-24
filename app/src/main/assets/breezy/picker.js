@@ -170,7 +170,7 @@
   window.addEventListener('scroll', draw, true);
   window.addEventListener('resize', draw);
 
-  window.__breezyPicker = {
+  var api = {
     parent: function () {
       if (!target || !target.parentElement || target.parentElement === document.body) return;
       trail.push(target);
@@ -204,8 +204,10 @@
       window.removeEventListener('scroll', draw, true);
       window.removeEventListener('resize', draw);
       [shield, box, preview].forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
-      window.__breezyPicker = null;
+      try { delete window.__breezyPicker; } catch (e) {}
     },
   };
+  // Hidden (non-enumerable) and under a per-session name: pages can't spot it.
+  Object.defineProperty(window, '__breezyPicker', { value: api, configurable: true });
   return true;
 })();

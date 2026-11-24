@@ -5,6 +5,7 @@ import android.os.Build
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,12 +78,13 @@ fun FrostedSheet(
         val enabled = AppSettings.frostedSurfaces
         val blurred = remember { mutableStateOf(false) }
         val cornerPx = with(density) { 28.dp.toPx() }
-        val strokePx = with(density) { 1.dp.roundToPx() }.coerceAtLeast(1)
-        // A thin light edge around the sheet (dark edge in light theme), like glass catching light.
-        val edge = if (base.luminance() < 0.5f) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.10f)
+        // A thin light edge (dark in light theme), brightest along the top and fading down the
+        // sides, like light catching the glass.
+        val edge = if (base.luminance() < 0.5f) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.12f)
+        val fadePx = with(density) { 140.dp.toPx() }
         val blurPx = with(density) { 36.dp.roundToPx() }
 
-        DisposableEffect(window, enabled, base, edge) {
+        DisposableEffect(window, enabled, base) {
             if (window == null) return@DisposableEffect onDispose { }
             window.setGravity(Gravity.BOTTOM)
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -95,12 +97,14 @@ fun FrostedSheet(
 
             fun apply(blur: Boolean) {
                 blurred.value = blur
-                // The blurred region follows this drawable's shape: rounded top corners.
-                window.setBackgroundDrawable(GradientDrawable().apply {
-                    cornerRadii = floatArrayOf(cornerPx, cornerPx, cornerPx, cornerPx, 0f, 0f, 0f, 0f)
+                // The blurred region copies this drawable's outline, which only works for a uniform
+                // round rect (per-corner radii fall back to a plain rectangle and leave sharp
+                // corners). So round all four corners and push the bottom two below the window.
+                val shape = GradientDrawable().apply {
+                    cornerRadius = cornerPx
                     setColor(base.copy(alpha = if (blur) 0.6f else 1f).toArgb())
-                    setStroke(strokePx, edge.toArgb())
-                })
+                }
+                window.setBackgroundDrawable(android.graphics.drawable.InsetDrawable(shape, 0, 0, 0, -cornerPx.toInt()))
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setBackgroundBlurRadius(if (blur) blurPx else 0)
             }
 
@@ -123,6 +127,13 @@ fun FrostedSheet(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                            0f to edge, 1f to Color.Transparent, startY = 0f, endY = fadePx,
+                        ),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    )
                     .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
                     .navigationBarsPadding(),
                 content = content,

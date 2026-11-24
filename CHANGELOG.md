@@ -2,6 +2,10 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.3 (test build)
+- The frosted area now follows the sheet's rounded corners (no more square corner peeking out).
+- The highlight edge is brightest along the top and fades into the sheet down the sides.
+
 ## 0.11.2 (test build)
 - A thin highlight edge around the menu and tab switcher, like light catching the glass.
 

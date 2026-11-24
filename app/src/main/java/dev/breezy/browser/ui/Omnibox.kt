@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -110,7 +111,18 @@ fun Omnibox(
                         )
                     }
                 }
-                items(visited.take(3), key = { "h-${it.url}" }) { h ->
+                // Bookmarks first: pages you chose to keep beat pages you merely visited.
+                val marks = dev.breezy.browser.data.Bookmarks.search(query, 2)
+                items(marks, key = { "b-${it.id}" }) { b ->
+                    ListItem(
+                        headlineContent = { Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(UrlInput.display(b.url), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Icon(Icons.Rounded.Star, null, tint = MaterialTheme.colorScheme.primary) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        modifier = Modifier.clickable { onGo(b.url) },
+                    )
+                }
+                items(visited.filter { v -> marks.none { it.url == v.url } }.take(3), key = { "h-${it.url}" }) { h ->
                     ListItem(
                         headlineContent = { Text(h.title.ifBlank { UrlInput.display(h.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(h.url.removePrefix("https://").removePrefix("www."), maxLines = 1, overflow = TextOverflow.Ellipsis) },

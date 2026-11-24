@@ -2,6 +2,16 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.10.1
+- **Bookmarks**: tap the star in the menu to save a page (tap again to remove). Menu →
+  Bookmarks lists them with search and folders; edit, add to home or delete from each one's
+  menu. Matching bookmarks show first in search suggestions.
+- **Backup & restore** (Settings → Advanced): save settings, home shortcuts, bookmarks,
+  Shields and your element-picker filters to a file, and restore them on this or another phone.
+  History, cookies and tabs aren't included.
+- **Harder to detect**: everything Breezy adds to web pages now has random names that change
+  each time the app starts, so sites can't check for "Breezy" to single you out.
+
 ## 0.10.0
 - **Security**: Breezy's page scripts now talk to the app over a channel that knows who's asking.
   Ads and other sites' embedded frames can no longer add fake downloads, change the media

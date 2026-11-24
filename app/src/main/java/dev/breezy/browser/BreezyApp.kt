@@ -19,6 +19,7 @@ class BreezyApp : Application() {
         dev.breezy.browser.data.CrashReport.install(this)
         AppSettings.init(this)
         dev.breezy.browser.data.Favicons.init(this)
+        dev.breezy.browser.data.Bookmarks.init(this)
         // Secure DNS must be in place before the first WebView makes a request.
         dev.breezy.browser.data.NetworkPrivacy.apply()
         Shield.init(this)

@@ -70,6 +70,7 @@ fun BrowserScreen(
     var newTabMode by rememberSaveable { mutableStateOf(false) }
     var newTabPrivate by rememberSaveable { mutableStateOf(false) }
     var historyOpen by rememberSaveable { mutableStateOf(false) }
+    var bookmarksOpen by rememberSaveable { mutableStateOf(false) }
     var textSizeOpen by remember { mutableStateOf(false) }
     var speedOpen by remember { mutableStateOf(false) }
     var article by remember { mutableStateOf<BrowserTab.Article?>(null) }
@@ -86,7 +87,7 @@ fun BrowserScreen(
 
     val showHome = tab == null || tab.url.isEmpty()
     val host = remember(tab?.url) { tab?.url?.toUri()?.host }
-    val overlayOpen = omniboxOpen || settingsOpen || historyOpen || article != null || tabs.showDownloads
+    val overlayOpen = omniboxOpen || settingsOpen || historyOpen || bookmarksOpen || article != null || tabs.showDownloads
     val finding = tab?.findResult != null
 
     // Back: page history first; then close the tab (falls back to another tab or the home page);
@@ -245,6 +246,18 @@ fun BrowserScreen(
                 )
             }
 
+            // --- Bookmarks ---------------------------------------------------------------------
+            AnimatedVisibility(
+                visible = bookmarksOpen,
+                enter = fadeIn() + slideInHorizontally { it / 4 },
+                exit = fadeOut() + slideOutHorizontally { it / 4 },
+            ) {
+                BookmarksScreen(
+                    onOpen = { url -> bookmarksOpen = false; navigate(url) },
+                    onDismiss = { bookmarksOpen = false },
+                )
+            }
+
             // --- Settings ----------------------------------------------------------------------
             AnimatedVisibility(
                 visible = settingsOpen,
@@ -341,6 +354,7 @@ fun BrowserScreen(
             onSpeed = { menuOpen = false; speedOpen = true },
             onNewPrivateTab = { menuOpen = false; openNewTab(private = true) },
             onHistory = { menuOpen = false; historyOpen = true },
+            onBookmarks = { menuOpen = false; bookmarksOpen = true },
             onShields = { menuOpen = false; shieldOpen = true },
             onDownloads = { menuOpen = false; tabs.showDownloads = true },
             onDismiss = { menuOpen = false },

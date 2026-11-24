@@ -38,6 +38,9 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Bookmarks
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.SwipeVertical
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -53,6 +56,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -86,6 +90,7 @@ fun MenuSheet(
     onSpeed: () -> Unit,
     onNewPrivateTab: () -> Unit,
     onHistory: () -> Unit,
+    onBookmarks: () -> Unit,
     onShields: () -> Unit,
     onDownloads: () -> Unit,
     onDismiss: () -> Unit,
@@ -114,17 +119,27 @@ fun MenuSheet(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
                 ) {
+                    val bookmarks by dev.breezy.browser.data.Bookmarks.all.collectAsState()
+                    val saved = bookmarks.any { it.url.removePrefix("https://").removePrefix("http://").trimEnd('/') ==
+                        tab.url.removePrefix("https://").removePrefix("http://").trimEnd('/') }
+                    val context = androidx.compose.ui.platform.LocalContext.current
                     val items = listOf(
                         Triple(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tab.canGoBack) to { tab.goBack() },
                         Triple(Icons.AutoMirrored.Rounded.ArrowForward, "Forward", tab.canGoForward) to { tab.goForward() },
                         Triple(if (tab.loading) Icons.Rounded.Close else Icons.Rounded.Refresh, if (tab.loading) "Stop" else "Reload", onPage) to
                             { if (tab.loading) tab.stop() else tab.reload() },
+                        Triple(if (saved) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (saved) "Remove bookmark" else "Bookmark", onPage) to {
+                            val existing = dev.breezy.browser.data.Bookmarks.find(tab.url)
+                            if (existing != null) dev.breezy.browser.data.Bookmarks.remove(existing)
+                            else dev.breezy.browser.data.Bookmarks.add(tab.title.ifBlank { tab.url }, tab.url)
+                            android.widget.Toast.makeText(context, if (existing != null) "Bookmark removed" else "Bookmarked", android.widget.Toast.LENGTH_SHORT).show()
+                        },
                         Triple(Icons.Rounded.Share, "Share", onPage) to onShare,
                     )
                     items.forEachIndexed { i, (meta, action) ->
                         val (icon, label, enabled) = meta
                         ToggleButton(
-                            checked = false,
+                            checked = label == "Remove bookmark",
                             onCheckedChange = { action(); if (i < 3) onDismiss() },
                             enabled = enabled,
                             shapes = when (i) {
@@ -140,6 +155,11 @@ fun MenuSheet(
                 Spacer(Modifier.height(8.dp))
             }
 
+            ListItem(
+                headlineContent = { Text("Bookmarks") },
+                leadingContent = { Icon(Icons.Rounded.Bookmarks, null) },
+                modifier = itemModifier.clickable(onClick = onBookmarks),
+            )
             if (BrowserTab.multiProfileSupported) {
                 ListItem(
                     headlineContent = { Text("New private tab") },

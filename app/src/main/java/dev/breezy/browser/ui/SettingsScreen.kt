@@ -434,8 +434,7 @@ fun SettingsScreen(
             item(key = "advanced") {
                 SettingsGroup(
                     title = "Advanced",
-                    summary = (if (AppSettings.identifyAsChrome) "Identifying as Chrome" else "Identifying as WebView") +
-                        " · updates " + (if (AppSettings.autoCheckUpdates) "on" else "off"),
+                    summary = "Updates " + (if (AppSettings.autoCheckUpdates) "on" else "off") + " · backup · diagnostics",
                     icon = Icons.Rounded.Tune,
                 ) {
                     ToggleRow("Identify as Chrome", "Helps Google/YouTube sign-in. Turn off if a site misbehaves (reloads tabs)",
@@ -446,6 +445,7 @@ fun SettingsScreen(
                     ToggleRow("Check for updates automatically", "Look for a new Breezy release on GitHub once a day",
                         AppSettings.autoCheckUpdates, AppSettings::updateAutoCheckUpdates)
                     UpdateRow()
+                    BackupRows()
                     ListItem(
                         headlineContent = { Text("Share diagnostics") },
                         supportingContent = { Text("Recent app exits and events, to report a bug. No pages or history") },
@@ -703,6 +703,64 @@ private fun TranslateLanguageRow() {
                 )
             }
         }
+    }
+}
+
+/** Back up to / restore from a JSON file (settings, shortcuts, bookmarks, Shields, filters). */
+@Composable
+private fun BackupRows() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf<Pair<org.json.JSONObject, dev.breezy.browser.data.Backup.Summary>?>(null) }
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) scope.launch {
+            val ok = runCatching { dev.breezy.browser.data.Backup.export(context, uri) }.isSuccess
+            android.widget.Toast.makeText(context, if (ok) "Backup saved" else "Couldn't save the backup", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    val open = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { dev.breezy.browser.data.Backup.read(context, uri) }
+                .onSuccess { pending = it }
+                .onFailure { android.widget.Toast.makeText(context, it.message ?: "Couldn't read that file", android.widget.Toast.LENGTH_SHORT).show() }
+        }
+    }
+    ListItem(
+        headlineContent = { Text("Back up") },
+        supportingContent = { Text("Save settings, shortcuts, bookmarks, Shields and your filters to a file. Not history, cookies or tabs") },
+        colors = cardItemColors(),
+        modifier = Modifier.clickable {
+            val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            save.launch("breezy-backup-$day.json")
+        },
+    )
+    ListItem(
+        headlineContent = { Text("Restore") },
+        supportingContent = { Text("Replace your current setup with a backup file") },
+        colors = cardItemColors(),
+        modifier = Modifier.clickable { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+    )
+    pending?.let { (root, summary) ->
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text("Restore this backup?") },
+            text = {
+                Text(
+                    "From Breezy ${summary.version}, " +
+                        DateUtils.getRelativeTimeSpanString(summary.created) + ": " +
+                        "${summary.bookmarks} bookmarks, ${summary.shortcuts} shortcuts, plus settings, Shields and filters.\n\n" +
+                        "This replaces your current setup and restarts Breezy. History, cookies and tabs aren't touched.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { pending = null; scope.launch { dev.breezy.browser.data.Backup.restore(context, root) } }) { Text("Restore") }
+            },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
+        )
     }
 }
 

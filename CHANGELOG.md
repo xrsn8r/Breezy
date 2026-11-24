@@ -2,6 +2,10 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.9 (test build)
+- Tapping the empty space above the search suggestions goes back to the page.
+- On the home page, press Back twice to exit ("Press back again to exit").
+
 ## 0.11.8 (test build)
 - **Every sheet is frosted with Haze now**: the tab switcher, Shields and media sheets join the
   menu (Android 16+, solid on older versions).

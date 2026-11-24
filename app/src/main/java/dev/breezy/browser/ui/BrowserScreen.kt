@@ -105,6 +105,17 @@ fun BrowserScreen(
         if (tab!!.canGoBack) tab.goBack() else onCloseTab(tab)
     }
 
+    // On the home page, Back once warns, Back again within 2 s exits (instead of closing at once).
+    var lastBackAt by remember { mutableStateOf(0L) }
+    BackHandler(enabled = !overlayOpen && tab == null) {
+        val now = System.currentTimeMillis()
+        if (now - lastBackAt < 2_000) onExit()
+        else {
+            lastBackAt = now
+            Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun openNewTab(private: Boolean = false) {
         newTabMode = true
         newTabPrivate = private

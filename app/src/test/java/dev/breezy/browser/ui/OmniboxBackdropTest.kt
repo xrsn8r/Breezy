@@ -6,6 +6,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.click
 import androidx.test.core.app.ApplicationProvider
 import dev.breezy.browser.AppSettings
 import dev.breezy.browser.ui.theme.BreezyTheme
@@ -38,6 +41,18 @@ class OmniboxBackdropTest {
             }
         }
         compose.onNodeWithContentDescription("Close").performClick()
+        compose.waitForIdle()
+        assertEquals(1, closed)
+    }
+
+    @Test fun tapAboveSuggestionsCloses() {
+        var closed = 0
+        compose.setContent {
+            BreezyTheme(dark = true) {
+                Omnibox(privateMode = true, initial = "", tabs = emptyList(), onGo = {}, onSwitchTab = {}, onDismiss = { closed++ })
+            }
+        }
+        compose.onRoot().performTouchInput { click(androidx.compose.ui.geometry.Offset(centerX, height * 0.2f)) }
         compose.waitForIdle()
         assertEquals(1, closed)
     }

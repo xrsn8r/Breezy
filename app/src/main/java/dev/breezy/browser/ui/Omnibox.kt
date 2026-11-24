@@ -44,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
@@ -108,7 +110,15 @@ fun Omnibox(
             // Drawn bottom-up (reverseLayout), so the first items sit right above the text field, a
             // thumb's reach from the keyboard: what you typed, then pages you've visited, then
             // the engine's suggestions, then open tabs furthest away.
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true) {
+            LazyColumn(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    // A tap on the empty space above the suggestions goes back to the page. Rows
+                    // handle their own taps first, and drags still scroll.
+                    .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+                reverseLayout = true,
+            ) {
                 if (query.isNotEmpty()) {
                     item {
                         val resolved = UrlInput.resolve(query)

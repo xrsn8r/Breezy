@@ -280,3 +280,17 @@ fun HazeSheet(
         }
     }
 }
+
+/**
+ * Breezy's bottom sheet: an in-window Haze sheet when [hazeState] is given (the browser passes
+ * its own), otherwise a sheet in its own window (used where there's no Haze state, e.g. tests).
+ */
+@Composable
+fun BreezySheet(
+    hazeState: dev.chrisbanes.haze.HazeState?,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (hazeState != null) HazeSheet(hazeState, onDismissRequest, content)
+    else FrostedSheet(onDismissRequest, content)
+}

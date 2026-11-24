@@ -2,6 +2,11 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.8 (test build)
+- **Every sheet is frosted with Haze now**: the tab switcher, Shields and media sheets join the
+  menu (Android 16+, solid on older versions).
+- The README lists the Android versions Breezy supports (8.0 to 17) and which features need newer ones.
+
 ## 0.11.7 (test build)
 - **The menu is now frosted with Haze**, the same live blur as the toolbar: the page shows
   through the menu blurred while the page above it stays sharp. Android 16+ (solid on older

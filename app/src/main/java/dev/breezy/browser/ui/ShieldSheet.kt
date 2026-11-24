@@ -54,6 +54,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ShieldSheet(
+    hazeState: dev.chrisbanes.haze.HazeState? = null,
     tab: BrowserTab?,
     state: Shield.State,
     onSiteToggle: (host: String, on: Boolean) -> Unit,
@@ -67,7 +68,7 @@ fun ShieldSheet(
     val siteOn = host != null && host !in state.allowlist
     val active = state.enabled && siteOn && state.ready
 
-    FrostedSheet(onDismissRequest = onDismiss) {
+    BreezySheet(hazeState, onDismissRequest = onDismiss) {
         androidx.compose.foundation.layout.Spacer(Modifier.height(20.dp))
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),

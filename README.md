@@ -3,7 +3,26 @@
 A fast Android WebView browser with **Brave's adblock-rust engine built into its core** and a
 **Material 3 Expressive** UI (Jetpack Compose).
 
-## How it fits together
+## Android versions
+
+| | |
+|---|---|
+| **Oldest supported** | Android 8.0 Oreo (API 26) |
+| **Newest supported** | Android 17 (API 37). Built against Android 17, targets Android 16 (API 36); tested on a Pixel 9 Pro running Android 17 |
+| **Devices** | 64-bit ARM phones (arm64-v8a), which covers almost every phone from the last several years |
+| **WebView** | Keep *Android System WebView* (or Chrome) up to date; private tabs, Secure DNS and the early page scripts need a recent version |
+
+Some features need a newer Android than the minimum. On older versions they turn off or fall
+back quietly:
+
+| Feature | Needs | On older versions |
+|---|---|---|
+| Frosted menus, sheets and toolbar (real blur) | Android 16 | Solid sheets and a tinted toolbar |
+| Frosted search screen | Android 12 | Solid search screen |
+| Language detection from page text (translate button) | Android 10 | Uses the language the page declares |
+| Notification permission prompt (downloads, media) | Android 13 | Not needed; notifications just work |
+
+
 
 ```
 rust/breezy-core          Rust cdylib (libbreezy_core.so)

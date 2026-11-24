@@ -60,7 +60,7 @@ private sealed interface Probe {
 
 /** Lists media found on the page and downloads the one you pick. */
 @Composable
-fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Unit) {
+fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Unit, hazeState: dev.chrisbanes.haze.HazeState? = null) {
     val context = LocalContext.current
     val probes = remember { mutableStateMapOf<String, Probe>() }
     val media = tab.detectedMedia.toList()
@@ -73,7 +73,7 @@ fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Un
         }
     }
 
-    FrostedSheet(onDismissRequest = onDismiss) {
+    BreezySheet(hazeState, onDismissRequest = onDismiss) {
         androidx.compose.foundation.layout.Spacer(Modifier.height(20.dp))
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text("Media on this page", style = MaterialTheme.typography.titleLarge,

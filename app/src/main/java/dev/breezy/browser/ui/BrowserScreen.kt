@@ -281,7 +281,7 @@ fun BrowserScreen(
             }
         }
 
-        // --- Menu (drawn in this window so Haze can blur the page behind it) ----------
+        // --- Sheets (drawn in this window so Haze can blur the page behind them) -------
         if (menuOpen) {
             MenuSheet(
                 hazeState = hazeState,
@@ -344,34 +344,51 @@ fun BrowserScreen(
                 onDismiss = { menuOpen = false },
             )
         }
+
+        if (tabsOpen) {
+            TabsSheet(
+                hazeState = hazeState,
+                tabs = tabs.tabs,
+                current = tab,
+                onSelect = { tabs.select(it); tabsOpen = false },
+                onClose = onCloseTab,
+                onNewTab = { tabsOpen = false; openNewTab() },
+                onNewPrivateTab = { tabsOpen = false; openNewTab(private = true) },
+                onDismiss = { tabsOpen = false },
+            )
+        }
+
+        if (shieldOpen) {
+            ShieldSheet(
+                hazeState = hazeState,
+                tab = tab,
+                state = shield,
+                onSiteToggle = { siteHost, on ->
+                    Shield.setSiteAllowed(siteHost, allowed = !on)
+                    tab?.reload()
+                },
+                onGlobalToggle = { Shield.setEnabled(it); tab?.reload() },
+                onUpdateLists = { scope.launch { Shield.updateLists(context.applicationContext) } },
+                onManageLists = { shieldOpen = false; settingsOpen = true },
+                onDismiss = { shieldOpen = false },
+            )
+        }
+
+        if (mediaOpen && tab != null) {
+            MediaSheet(
+                hazeState = hazeState,
+                tab = tab,
+                onStarted = { name ->
+                    mediaOpen = false
+                    Toast.makeText(context, "Downloading $name", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { mediaOpen = false },
+            )
+        }
+
     }
 
-    if (tabsOpen) {
-        TabsSheet(
-            tabs = tabs.tabs,
-            current = tab,
-            onSelect = { tabs.select(it); tabsOpen = false },
-            onClose = onCloseTab,
-            onNewTab = { tabsOpen = false; openNewTab() },
-            onNewPrivateTab = { tabsOpen = false; openNewTab(private = true) },
-            onDismiss = { tabsOpen = false },
-        )
-    }
 
-    if (shieldOpen) {
-        ShieldSheet(
-            tab = tab,
-            state = shield,
-            onSiteToggle = { siteHost, on ->
-                Shield.setSiteAllowed(siteHost, allowed = !on)
-                tab?.reload()
-            },
-            onGlobalToggle = { Shield.setEnabled(it); tab?.reload() },
-            onUpdateLists = { scope.launch { Shield.updateLists(context.applicationContext) } },
-            onManageLists = { shieldOpen = false; settingsOpen = true },
-            onDismiss = { shieldOpen = false },
-        )
-    }
 
 
     addHome?.let { initial ->
@@ -459,16 +476,6 @@ fun BrowserScreen(
         if (result == SnackbarResult.ActionPerformed) tabs.undoClose()
     }
 
-    if (mediaOpen && tab != null) {
-        MediaSheet(
-            tab = tab,
-            onStarted = { name ->
-                mediaOpen = false
-                Toast.makeText(context, "Downloading $name", Toast.LENGTH_SHORT).show()
-            },
-            onDismiss = { mediaOpen = false },
-        )
-    }
 
     tabs.permissionPrompt?.let { prompt ->
         SitePermissionDialog(prompt.host, prompt.kinds, prompt.onResult)

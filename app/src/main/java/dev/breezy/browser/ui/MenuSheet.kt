@@ -109,11 +109,7 @@ fun MenuSheet(
         dev.breezy.browser.data.CrashReport.note("menu opened")
         onDispose { dev.breezy.browser.data.CrashReport.note("menu closed") }
     }
-    val sheet: @Composable (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) -> Unit = { body ->
-        if (hazeState != null) HazeSheet(hazeState, onDismissRequest = onDismiss, content = body)
-        else FrostedSheet(onDismissRequest = onDismiss, content = body)
-    }
-    sheet {
+    BreezySheet(hazeState, onDismissRequest = onDismiss) {
         Column(
             Modifier.logTouches { "frosted" }.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),

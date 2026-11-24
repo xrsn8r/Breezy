@@ -43,6 +43,7 @@ import dev.breezy.browser.browser.UrlInput
 
 @Composable
 fun TabsSheet(
+    hazeState: dev.chrisbanes.haze.HazeState? = null,
     tabs: List<BrowserTab>,
     current: BrowserTab?,
     onSelect: (BrowserTab) -> Unit,
@@ -51,7 +52,7 @@ fun TabsSheet(
     onNewPrivateTab: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    FrostedSheet(onDismissRequest = onDismiss) {
+    BreezySheet(hazeState, onDismissRequest = onDismiss) {
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${tabs.size} tabs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))

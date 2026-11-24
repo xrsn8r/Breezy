@@ -280,6 +280,70 @@ fun BrowserScreen(
                 )
             }
         }
+
+        // --- Menu (drawn in this window so Haze can blur the page behind it) ----------
+        if (menuOpen) {
+            MenuSheet(
+                hazeState = hazeState,
+                tab = tab,
+                onNewTab = { menuOpen = false; openNewTab() },
+                onShare = { tab?.let { onShare(it.url) }; menuOpen = false },
+                onSettings = { menuOpen = false; settingsOpen = true },
+                onBlockElement = { menuOpen = false; tab?.startPicker() },
+                onUnlockScrolling = {
+                    menuOpen = false
+                    tab?.unlockScrolling { n ->
+                        Toast.makeText(
+                            context,
+                            if (n > 0) "Scrolling unlocked · $n overlay${if (n == 1) "" else "s"} disabled" else "Scrolling unlocked",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                },
+                onDiagnostics = { menuOpen = false; tab?.diagnostics { diagnostics = it } },
+                onAddToHome = {
+                    menuOpen = false
+                    tab?.let { t ->
+                        addHome = Shortcut(t.title.ifBlank { UrlInput.display(t.url) }.take(40), t.url)
+                    }
+                },
+                onAddAsFilterList = {
+                    menuOpen = false
+                    val t = tab ?: return@MenuSheet
+                    t.pageText { text ->
+                        scope.launch {
+                            val error = Shield.addCustomListFromText(t.url, "", text)
+                            Toast.makeText(
+                                context,
+                                error ?: "Filter list added · tap Apply in Settings → Filter lists",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            if (error == null) settingsOpen = true
+                        }
+                    }
+                },
+                onFind = { menuOpen = false; tab?.startFind() },
+                onTranslate = {
+                    menuOpen = false
+                    tab?.let { if (it.translatedFrom != null) it.showOriginal() else it.translate() }
+                },
+                onReader = {
+                    menuOpen = false
+                    tab?.extractArticle { a ->
+                        if (a != null) article = a
+                        else Toast.makeText(context, "No article found on this page", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onTextSize = { menuOpen = false; textSizeOpen = true },
+                onSpeed = { menuOpen = false; speedOpen = true },
+                onNewPrivateTab = { menuOpen = false; openNewTab(private = true) },
+                onHistory = { menuOpen = false; historyOpen = true },
+                onBookmarks = { menuOpen = false; bookmarksOpen = true },
+                onShields = { menuOpen = false; shieldOpen = true },
+                onDownloads = { menuOpen = false; tabs.showDownloads = true },
+                onDismiss = { menuOpen = false },
+            )
+        }
     }
 
     if (tabsOpen) {
@@ -309,67 +373,6 @@ fun BrowserScreen(
         )
     }
 
-    if (menuOpen) {
-        MenuSheet(
-            tab = tab,
-            onNewTab = { menuOpen = false; openNewTab() },
-            onShare = { tab?.let { onShare(it.url) }; menuOpen = false },
-            onSettings = { menuOpen = false; settingsOpen = true },
-            onBlockElement = { menuOpen = false; tab?.startPicker() },
-            onUnlockScrolling = {
-                menuOpen = false
-                tab?.unlockScrolling { n ->
-                    Toast.makeText(
-                        context,
-                        if (n > 0) "Scrolling unlocked · $n overlay${if (n == 1) "" else "s"} disabled" else "Scrolling unlocked",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            },
-            onDiagnostics = { menuOpen = false; tab?.diagnostics { diagnostics = it } },
-            onAddToHome = {
-                menuOpen = false
-                tab?.let { t ->
-                    addHome = Shortcut(t.title.ifBlank { UrlInput.display(t.url) }.take(40), t.url)
-                }
-            },
-            onAddAsFilterList = {
-                menuOpen = false
-                val t = tab ?: return@MenuSheet
-                t.pageText { text ->
-                    scope.launch {
-                        val error = Shield.addCustomListFromText(t.url, "", text)
-                        Toast.makeText(
-                            context,
-                            error ?: "Filter list added · tap Apply in Settings → Filter lists",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                        if (error == null) settingsOpen = true
-                    }
-                }
-            },
-            onFind = { menuOpen = false; tab?.startFind() },
-            onTranslate = {
-                menuOpen = false
-                tab?.let { if (it.translatedFrom != null) it.showOriginal() else it.translate() }
-            },
-            onReader = {
-                menuOpen = false
-                tab?.extractArticle { a ->
-                    if (a != null) article = a
-                    else Toast.makeText(context, "No article found on this page", Toast.LENGTH_SHORT).show()
-                }
-            },
-            onTextSize = { menuOpen = false; textSizeOpen = true },
-            onSpeed = { menuOpen = false; speedOpen = true },
-            onNewPrivateTab = { menuOpen = false; openNewTab(private = true) },
-            onHistory = { menuOpen = false; historyOpen = true },
-            onBookmarks = { menuOpen = false; bookmarksOpen = true },
-            onShields = { menuOpen = false; shieldOpen = true },
-            onDownloads = { menuOpen = false; tabs.showDownloads = true },
-            onDismiss = { menuOpen = false },
-        )
-    }
 
     addHome?.let { initial ->
         ShortcutDialog(

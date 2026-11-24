@@ -7,6 +7,10 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.input.pointer.pointerInput
+import dev.chrisbanes.haze.blur.hazeBlur
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
@@ -192,4 +196,87 @@ tailrec fun android.content.Context.findActivity(): android.app.Activity? = when
     is android.app.Activity -> this
     is android.content.ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+/**
+ * An in-window bottom sheet frosted with Haze, the same live backdrop blur as the toolbar: the
+ * page shows through the sheet blurred while the page above it stays sharp. Must be placed in
+ * the browser's root Box (above the page). Real blur needs Android 16+; older versions get a
+ * mostly opaque tint. With Frosted surfaces off it's a solid sheet.
+ *
+ * Opens at full height with no drag gestures (dragging used to swallow taps); closes on a tap on
+ * the dimmed area above it or Back.
+ */
+@Composable
+fun HazeSheet(
+    hazeState: dev.chrisbanes.haze.HazeState,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismissRequest)
+    val shown = remember { androidx.compose.animation.core.MutableTransitionState(false) }.apply { targetState = true }
+    val colors = MaterialTheme.colorScheme
+    val base = colors.surfaceContainerLow
+    // Haze's real blur needs Android 16 (API 36); below that use a solid sheet rather than relying
+    // on a fallback tint (which rendered fully transparent in testing).
+    val frosted = AppSettings.frostedSurfaces && Build.VERSION.SDK_INT >= 36
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    val edge = if (base.luminance() < 0.5f) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.12f)
+    val fadePx = with(LocalDensity.current) { 140.dp.toPx() }
+    val glass = remember(base) {
+        dev.chrisbanes.haze.blur.HazeBlurStyle {
+            blurRadius(32.dp)
+            noiseFactor(0.05f)
+            colorEffects(listOf(dev.chrisbanes.haze.blur.HazeColorEffect.tint(base.copy(alpha = 0.58f))))
+            // Without real blur (before Android 16): mostly opaque so text stays legible.
+            fallbackColorEffect(dev.chrisbanes.haze.blur.HazeColorEffect.tint(base.copy(alpha = 0.94f)))
+        }
+    }
+
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        // Dim the page; a tap here closes the sheet.
+        androidx.compose.animation.AnimatedVisibility(shown, enter = androidx.compose.animation.fadeIn()) {
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.32f))
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismissRequest,
+                    ),
+            )
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            shown,
+            enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
+                    .clip(shape)
+                    .then(
+                        if (frosted) Modifier.hazeBlur(input = dev.chrisbanes.haze.HazeInput.Backdrop(hazeState), style = glass)
+                        else Modifier.background(base),
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(0f to edge, 1f to Color.Transparent, startY = 0f, endY = fadePx),
+                        shape = shape,
+                    )
+                    // Make the sheet itself a touch target, so taps on its background don't fall
+                    // through to the dim layer. Consumes nothing (rows still get their taps) and adds
+                    // no semantics (a clickable here would merge every row into one node).
+                    .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+                    .navigationBarsPadding(),
+            ) {
+                CompositionLocalProvider(
+                    LocalContentColor provides colors.onSurface,
+                    LocalFrosted provides frosted,
+                ) { content() }
+            }
+        }
+    }
 }

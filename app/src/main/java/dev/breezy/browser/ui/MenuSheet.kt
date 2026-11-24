@@ -77,6 +77,8 @@ import dev.breezy.browser.browser.BrowserTab
 @Composable
 fun MenuSheet(
     tab: BrowserTab?,
+    /** The browser's Haze state: when given, the menu is an in-window Haze sheet (live blur). */
+    hazeState: dev.chrisbanes.haze.HazeState? = null,
     onNewTab: () -> Unit,
     onShare: () -> Unit,
     onSettings: () -> Unit,
@@ -107,7 +109,11 @@ fun MenuSheet(
         dev.breezy.browser.data.CrashReport.note("menu opened")
         onDispose { dev.breezy.browser.data.CrashReport.note("menu closed") }
     }
-    FrostedSheet(onDismissRequest = onDismiss) {
+    val sheet: @Composable (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) -> Unit = { body ->
+        if (hazeState != null) HazeSheet(hazeState, onDismissRequest = onDismiss, content = body)
+        else FrostedSheet(onDismissRequest = onDismiss, content = body)
+    }
+    sheet {
         Column(
             Modifier.logTouches { "frosted" }.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),

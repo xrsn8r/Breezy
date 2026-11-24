@@ -3,6 +3,8 @@ package dev.breezy.browser.ui
 import android.app.Application
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -77,6 +79,27 @@ class ScreenshotTest {
             }
         }
         shot("menu")
+    }
+
+    @Test fun menuHaze() {
+        compose.setContent {
+            BreezyTheme(dark = true) {
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.fillMaxSize().background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF7A2CFF), androidx.compose.ui.graphics.Color(0xFFFF3D7F), androidx.compose.ui.graphics.Color(0xFFFFCF3D))),
+                    ),
+                ) {
+                    MenuSheet(
+                        tab = null, hazeState = dev.chrisbanes.haze.rememberHazeState(),
+                        onNewTab = {}, onShare = {}, onSettings = {}, onBlockElement = {}, onUnlockScrolling = {},
+                        onDiagnostics = {}, onAddToHome = {}, onAddAsFilterList = {}, onFind = {}, onReader = {}, onTranslate = {},
+                        onTextSize = {}, onSpeed = {}, onNewPrivateTab = {}, onHistory = {}, onBookmarks = {}, onShields = {},
+                        onDownloads = {}, onDismiss = {},
+                    )
+                }
+            }
+        }
+        shot("menu-haze")
     }
 
     @Test fun bookmarks() {

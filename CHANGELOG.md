@@ -2,6 +2,11 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.7 (test build)
+- **The menu is now frosted with Haze**, the same live blur as the toolbar: the page shows
+  through the menu blurred while the page above it stays sharp. Android 16+ (solid on older
+  versions). Closes with a tap above it or Back. The other sheets follow once this looks right.
+
 ## 0.11.6 (test build)
 - Fixed a crash when Breezy closed while media was playing in the background (the playback
   notification service was stopped before it could start).

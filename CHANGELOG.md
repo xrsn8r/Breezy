@@ -2,6 +2,10 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.1 (test build)
+- Cards and buttons inside the menu and tab switcher are frosted too, as darker translucent glass.
+- Fixed: the tab count and private-tab icon in the tab switcher were black in dark mode.
+
 ## 0.11.0 (test build)
 - **Frosted menu and tab switcher**: the area behind them is frosted like the toolbar while the
   page above stays sharp (Android 12+). Done by the system, so it can't cause blank pages.

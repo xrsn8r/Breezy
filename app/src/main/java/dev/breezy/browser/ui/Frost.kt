@@ -12,7 +12,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
@@ -24,6 +31,24 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import dev.breezy.browser.AppSettings
 import java.util.function.Consumer
+
+/** True inside a FrostedSheet while its blur is on, so cards and buttons can go translucent too. */
+val LocalFrosted = staticCompositionLocalOf { false }
+
+/**
+ * Background for a card or button inside a frosted sheet: a translucent, darker glass when the
+ * sheet is blurred (so the frost shows through), [solid] otherwise. [tint] keeps an accent's hue.
+ */
+@Composable
+fun frostedFill(solid: Color, tint: Color? = null): Color {
+    if (!LocalFrosted.current) return solid
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    return when {
+        tint != null -> tint.copy(alpha = if (dark) 0.42f else 0.55f)
+        dark -> Color.Black.copy(alpha = 0.34f)
+        else -> Color.White.copy(alpha = 0.5f)
+    }
+}
 
 /**
  * A bottom sheet in its own bottom-anchored window, frosted like the toolbar.
@@ -50,6 +75,7 @@ fun FrostedSheet(
         val density = LocalDensity.current
         val base = MaterialTheme.colorScheme.surfaceContainerLow
         val enabled = AppSettings.frostedSurfaces
+        val blurred = remember { mutableStateOf(false) }
         val cornerPx = with(density) { 28.dp.toPx() }
         val blurPx = with(density) { 36.dp.roundToPx() }
 
@@ -65,6 +91,7 @@ fun FrostedSheet(
             }
 
             fun apply(blur: Boolean) {
+                blurred.value = blur
                 // The blurred region follows this drawable's shape: rounded top corners.
                 window.setBackgroundDrawable(GradientDrawable().apply {
                     cornerRadii = floatArrayOf(cornerPx, cornerPx, cornerPx, cornerPx, 0f, 0f, 0f, 0f)
@@ -83,12 +110,19 @@ fun FrostedSheet(
             }
         }
 
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
-                .navigationBarsPadding(),
-            content = content,
-        )
+        // A Dialog has no Surface around it, so set the content colour ourselves (otherwise text
+        // and icons default to black, unreadable in dark mode).
+        CompositionLocalProvider(
+            LocalContentColor provides MaterialTheme.colorScheme.onSurface,
+            LocalFrosted provides blurred.value,
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
+                    .navigationBarsPadding(),
+                content = content,
+            )
+        }
     }
 }

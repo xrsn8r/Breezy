@@ -91,8 +91,8 @@ fun TabsSheet(
                         onClick = { onSelect(t) },
                         shape = RoundedCornerShape(corner.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            containerColor = if (selected) frostedFill(MaterialTheme.colorScheme.primaryContainer, tint = MaterialTheme.colorScheme.primaryContainer)
+                            else frostedFill(MaterialTheme.colorScheme.surfaceContainerHigh),
                         ),
                         modifier = Modifier.height(120.dp),
                     ) {

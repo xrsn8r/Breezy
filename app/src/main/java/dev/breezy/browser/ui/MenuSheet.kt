@@ -155,7 +155,10 @@ fun MenuSheet(
                                 items.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                                 else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                             },
-                            colors = FilledTonalToggleButtonDefaults.colors(),
+                            colors = FilledTonalToggleButtonDefaults.colors(
+                                containerColor = frostedFill(MaterialTheme.colorScheme.secondaryContainer, tint = MaterialTheme.colorScheme.secondaryContainer),
+                                disabledContainerColor = frostedFill(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                            ),
                             modifier = Modifier.weight(1f).height(52.dp),
                         ) { Icon(icon, contentDescription = label) }
                     }
@@ -165,12 +168,14 @@ fun MenuSheet(
 
             ListItem(
                 leadingContent = { Icon(Icons.Rounded.Bookmarks, null) },
+                colors = ListItemDefaults.colors(containerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerLow)),
                 modifier = itemModifier.clickable { tapped("Bookmarks"); onBookmarks() },
             ) { Text("Bookmarks") }
             if (BrowserTab.multiProfileSupported) {
                 ListItem(
                     leadingContent = { Icon(Icons.Rounded.VisibilityOff, null) },
-                    modifier = itemModifier.clickable { tapped("New private tab"); onNewPrivateTab() },
+                    colors = ListItemDefaults.colors(containerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerLow)),
+                modifier = itemModifier.clickable { tapped("New private tab"); onNewPrivateTab() },
                 ) { Text("New private tab") }
             }
 
@@ -209,6 +214,7 @@ fun MenuSheet(
             }
             ListItem(
                 leadingContent = { Icon(Icons.Rounded.Settings, null) },
+                colors = ListItemDefaults.colors(containerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerLow)),
                 modifier = itemModifier.clickable { tapped("Settings"); onSettings() },
             ) { Text("Settings") }
         }
@@ -220,7 +226,7 @@ private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
     Surface(
         onClick = { tapped(label); onClick() },
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = frostedFill(MaterialTheme.colorScheme.secondaryContainer, tint = MaterialTheme.colorScheme.secondaryContainer),
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
         modifier = modifier.height(76.dp),
     ) {
@@ -244,7 +250,7 @@ private fun MenuGroup(
     val rotation by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = frostedFill(MaterialTheme.colorScheme.surfaceContainerHigh),
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     ) {
         Column {

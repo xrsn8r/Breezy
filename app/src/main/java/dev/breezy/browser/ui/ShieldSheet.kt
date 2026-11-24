@@ -135,14 +135,12 @@ fun ShieldSheet(
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
             ListItem(
-                headlineContent = { Text("Block ads & trackers everywhere") },
                 supportingContent = {
                     Text("${NumberFormat.getIntegerInstance().format(state.totalBlocked)} blocked so far")
                 },
                 trailingContent = { Switch(checked = state.enabled, onCheckedChange = onGlobalToggle) },
-            )
+            ) { Text("Block ads & trackers everywhere") }
             ListItem(
-                headlineContent = { Text("Filter lists") },
                 supportingContent = {
                     Text(
                         state.lastError?.let { "Update failed: $it" }
@@ -158,7 +156,7 @@ fun ShieldSheet(
                         IconButton(onClick = onUpdateLists) { Icon(Icons.Rounded.Sync, contentDescription = "Update lists") }
                     }
                 },
-            )
+            ) { Text("Filter lists") }
             Spacer(Modifier.height(8.dp))
             val stats by dev.breezy.browser.data.Stats.snapshot.collectAsState()
             LaunchedEffect(Unit) { dev.breezy.browser.data.Stats.flush() }

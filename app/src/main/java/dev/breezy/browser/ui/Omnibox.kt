@@ -101,39 +101,35 @@ fun Omnibox(
                         val resolved = UrlInput.resolve(query)
                         val isSearch = UrlInput.isSearch(resolved)
                         ListItem(
-                            headlineContent = { Text(if (isSearch) "Search “$query”" else resolved, maxLines = 1) },
                             supportingContent = { Text(if (isSearch) AppSettings.searchEngine.label else "Open address") },
                             leadingContent = {
                                 Icon(if (isSearch) Icons.Rounded.Search else Icons.Rounded.Language, null)
                             },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                             modifier = Modifier.clickable { onGo(query) },
-                        )
+                        ) { Text(if (isSearch) "Search “$query”" else resolved, maxLines = 1) }
                     }
                 }
                 // Bookmarks first: pages you chose to keep beat pages you merely visited.
                 val marks = dev.breezy.browser.data.Bookmarks.search(query, 2)
                 items(marks, key = { "b-${it.id}" }) { b ->
                     ListItem(
-                        headlineContent = { Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(UrlInput.display(b.url), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Icon(Icons.Rounded.Star, null, tint = MaterialTheme.colorScheme.primary) },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                         modifier = Modifier.clickable { onGo(b.url) },
-                    )
+                    ) { Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 items(visited.filter { v -> marks.none { it.url == v.url } }.take(3), key = { "h-${it.url}" }) { h ->
                     ListItem(
-                        headlineContent = { Text(h.title.ifBlank { UrlInput.display(h.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(h.url.removePrefix("https://").removePrefix("www."), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                         modifier = Modifier.clickable { onGo(h.url) },
-                    )
+                    ) { Text(h.title.ifBlank { UrlInput.display(h.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 items(suggestions.filter { !it.equals(query, true) }.take(4), key = { "s-$it" }) { sug ->
                     ListItem(
-                        headlineContent = { Text(sug, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                         trailingContent = {
                             // Put the suggestion in the box to refine it, like Chrome's ↖ arrow.
@@ -144,17 +140,16 @@ fun Omnibox(
                         },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                         modifier = Modifier.clickable { onGo(sug) },
-                    )
+                    ) { Text(sug, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 if (matches.isNotEmpty()) {
                     items(matches, key = { it.id }) { t ->
                         ListItem(
-                            headlineContent = { Text(t.title.ifEmpty { "New tab" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             supportingContent = { Text(UrlInput.display(t.url), maxLines = 1) },
                             leadingContent = { Favicon(t) },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                             modifier = Modifier.clickable { onSwitchTab(t) },
-                        )
+                        ) { Text(t.title.ifEmpty { "New tab" }, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                     item {
                         Text(

@@ -32,6 +32,7 @@ class BreezyApp : Application() {
             dev.breezy.browser.downloads.DownloadService.notifyCompleted(this, job)
         }
         // Real backdrop blur (Android 16+) for the frosted toolbar; older versions use a tint.
+        @OptIn(dev.chrisbanes.haze.ExperimentalHazeApi::class)
         HazeFeatureFlags.isPlatformBackdropEnabled = true
         // Deserializing the precompiled engine takes a few ms; do it off the main thread while
         // the first WebView spins up. Then refresh lists weekly when on Wi-Fi.

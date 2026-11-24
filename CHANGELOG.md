@@ -2,6 +2,12 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.10.2
+- **Updated Android components**: list rows, sliders, the tab switcher sheet and swipe-to-close
+  now use the current Material 3 APIs (no more deprecated building blocks). Screens look the same.
+- Fixed: two bookmarks added at the same moment could crash the bookmarks list.
+- New screenshot tests render the main screens on every build, to catch visual regressions.
+
 ## 0.10.1
 - **Bookmarks**: tap the star in the menu to save a page (tap again to remove). Menu →
   Bookmarks lists them with search and folders; edit, add to home or delete from each one's

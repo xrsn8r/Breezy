@@ -193,10 +193,7 @@ fun TextSizeDialog(host: String, current: Int?, onChange: (Int?) -> Unit, onDism
         text = {
             Column {
                 Text("${value.roundToInt()}% on $host", style = MaterialTheme.typography.titleMedium)
-                Slider(
-                    value = value, onValueChange = { value = it; onChange(it.roundToInt()) },
-                    valueRange = 50f..250f, steps = 19,
-                )
+                StepSlider(value = value, valueRange = 50f..250f, steps = 19) { value = it; onChange(it.roundToInt()) }
                 Text("Default for all sites: ${AppSettings.textZoom}% (change in Settings)",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -308,15 +305,13 @@ fun SiteControls(
     var confirmForget by remember { mutableStateOf(false) }
     Column {
         ListItem(
-            headlineContent = { Text("JavaScript") },
             supportingContent = { Text(if (config.javascript) "Allowed" else "Blocked on this site") },
             trailingContent = { Switch(config.javascript, { v -> onChange { it.copy(javascript = v) } }) },
-        )
+        ) { Text("JavaScript") }
         ListItem(
-            headlineContent = { Text("Cookies") },
             supportingContent = { Text(if (config.cookies) "Allowed (third-party always blocked)" else "Blocked on this site") },
             trailingContent = { Switch(config.cookies, { v -> onChange { it.copy(cookies = v) } }) },
-        )
+        ) { Text("Cookies") }
         PermissionRow("Camera", config.camera) { v -> onChange { it.copy(camera = v) } }
         PermissionRow("Microphone", config.microphone) { v -> onChange { it.copy(microphone = v) } }
         PermissionRow("Location", config.location) { v -> onChange { it.copy(location = v) } }
@@ -341,7 +336,6 @@ fun SiteControls(
 @Composable
 private fun PermissionRow(label: String, value: SitePermission, onPick: (SitePermission) -> Unit) {
     ListItem(
-        headlineContent = { Text(label) },
         trailingContent = {
             Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
                 SitePermission.entries.forEachIndexed { i, p ->
@@ -358,7 +352,7 @@ private fun PermissionRow(label: String, value: SitePermission, onPick: (SitePer
                 }
             }
         },
-    )
+    ) { Text(label) }
 }
 
 // --- Page diagnostics -------------------------------------------------------------------------------

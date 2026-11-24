@@ -262,8 +262,9 @@ class MainActivity : ComponentActivity(), TabHost {
         }
     }
 
-    override fun onPictureInPictureModeChanged(inPip: Boolean, newConfig: android.content.res.Configuration) {
-        super.onPictureInPictureModeChanged(inPip, newConfig)
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        val inPip = isInPictureInPictureMode
         val tab = tabs.current
         // Only the page shows in the small window: hide the browser UI.
         uiView?.visibility = if (inPip) View.GONE else View.VISIBLE

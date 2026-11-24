@@ -156,24 +156,21 @@ fun MenuSheet(
             }
 
             ListItem(
-                headlineContent = { Text("Bookmarks") },
                 leadingContent = { Icon(Icons.Rounded.Bookmarks, null) },
                 modifier = itemModifier.clickable(onClick = onBookmarks),
-            )
+            ) { Text("Bookmarks") }
             if (BrowserTab.multiProfileSupported) {
                 ListItem(
-                    headlineContent = { Text("New private tab") },
                     leadingContent = { Icon(Icons.Rounded.VisibilityOff, null) },
                     modifier = itemModifier.clickable(onClick = onNewPrivateTab),
-                )
+                ) { Text("New private tab") }
             }
 
             if (onPage) {
-                tab!!
                 MenuGroup("Page", Icons.AutoMirrored.Rounded.Article, pageOpen, { pageOpen = it }) {
                     MenuRow(Icons.Rounded.Search, "Find in page", onClick = onFind)
                     MenuRow(Icons.AutoMirrored.Rounded.Article, "Reader mode", onClick = onReader)
-                    if (tab?.translatedFrom != null) {
+                    if (tab.translatedFrom != null) {
                         MenuRow(Icons.Rounded.Translate, "Show original",
                             tab.translatedFrom?.takeIf { it != "…" }?.let { "Translated from " + dev.breezy.browser.data.Translator.displayName(it) },
                             onClick = onTranslate)
@@ -188,11 +185,10 @@ fun MenuSheet(
                     }
                     MenuRow(Icons.Rounded.AddHome, "Add to home", onClick = onAddToHome)
                     ListItem(
-                        headlineContent = { Text("Desktop site") },
                         leadingContent = { Icon(Icons.Rounded.DesktopWindows, null) },
                         trailingContent = { Switch(checked = tab.desktopMode, onCheckedChange = { tab.toggleDesktopMode() }) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
+                    ) { Text("Desktop site") }
                 }
                 MenuGroup("Tools", Icons.Rounded.Build, toolsOpen, { toolsOpen = it }) {
                     MenuRow(Icons.Rounded.Block, "Block element", "Tap anything on the page to hide it", onClick = onBlockElement)
@@ -204,10 +200,9 @@ fun MenuSheet(
                 }
             }
             ListItem(
-                headlineContent = { Text("Settings") },
                 leadingContent = { Icon(Icons.Rounded.Settings, null) },
                 modifier = itemModifier.clickable(onClick = onSettings),
-            )
+            ) { Text("Settings") }
         }
     }
 }
@@ -246,12 +241,11 @@ private fun MenuGroup(
     ) {
         Column {
             ListItem(
-                headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
                 leadingContent = { Icon(icon, null) },
                 trailingContent = { Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.rotate(rotation)) },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 modifier = Modifier.clickable { onToggle(!open) },
-            )
+            ) { Text(title, style = MaterialTheme.typography.titleMedium) }
             AnimatedVisibility(visible = open) {
                 Column(Modifier.padding(bottom = 8.dp)) { content() }
             }
@@ -267,12 +261,11 @@ private fun MenuRow(
     onClick: () -> Unit,
 ) {
     ListItem(
-        headlineContent = { Text(title) },
         supportingContent = subtitle?.let { { Text(it) } },
         leadingContent = { Icon(icon, null) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
-    )
+    ) { Text(title) }
 }
 
 /** Plain-text list URLs (…/list.txt, raw?file=…txt) get "Add page as filter list". */

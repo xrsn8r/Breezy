@@ -55,7 +55,9 @@ object Bookmarks {
 
     fun add(title: String, url: String, folder: String = ""): Bookmark {
         find(url)?.let { return it }
-        val b = Bookmark(System.currentTimeMillis(), title.ifBlank { url }, url, folder.trim())
+        // Unique even when two are added in the same millisecond (ids key the bookmark list).
+        val id = maxOf(System.currentTimeMillis(), (_all.value.maxOfOrNull { it.id } ?: 0) + 1)
+        val b = Bookmark(id, title.ifBlank { url }, url, folder.trim())
         save(_all.value + b)
         return b
     }
@@ -71,5 +73,10 @@ object Bookmarks {
     }
 
     /** Replace everything (backup restore). */
-    fun replaceAll(list: List<Bookmark>) = save(list)
+    fun replaceAll(list: List<Bookmark>) {
+        // A hand-edited or merged backup could repeat ids; give duplicates fresh ones.
+        val seen = HashSet<Long>()
+        var next = (list.maxOfOrNull { it.id } ?: 0) + 1
+        save(list.map { if (seen.add(it.id)) it else it.copy(id = next++).also { c -> seen.add(c.id) } })
+    }
 }

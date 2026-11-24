@@ -80,29 +80,25 @@ fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Un
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
             if (media.isEmpty()) {
                 ListItem(
-                    headlineContent = { Text(if (tab.streamOnlyMedia) "This video can't be downloaded directly" else "No media found yet") },
                     supportingContent = {
                         Text(if (tab.streamOnlyMedia) "It's streamed in separate pieces (like YouTube) rather than as a file."
                         else "Start playing the video, then check again.")
                     },
                     leadingContent = { Icon(Icons.Rounded.Info, null) },
-                )
+                ) { Text(if (tab.streamOnlyMedia) "This video can't be downloaded directly" else "No media found yet") }
             }
             for (m in media) {
                 when (val p = probes[m.url] ?: Probe.Loading) {
                     Probe.Loading -> ListItem(
-                        headlineContent = { Text(fileLabel(m), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text("Checking…") },
                         leadingContent = { LoadingIndicator(Modifier.size(28.dp)) },
-                    )
+                    ) { Text(fileLabel(m), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     is Probe.Failed -> ListItem(
-                        headlineContent = { Text(fileLabel(m), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(p.reason, color = MaterialTheme.colorScheme.error) },
                         leadingContent = { Icon(Icons.Rounded.Info, null) },
-                    )
+                    ) { Text(fileLabel(m), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     is Probe.Ready -> p.options.forEach { opt ->
                         ListItem(
-                            headlineContent = { Text(opt.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                             supportingContent = { Text(opt.detail, maxLines = 1) },
                             leadingContent = { Icon(if (opt.video) Icons.Rounded.VideoFile else Icons.Rounded.AudioFile, null) },
                             trailingContent = {
@@ -112,7 +108,7 @@ fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Un
                                     onStarted(name)
                                 }) { Icon(Icons.Rounded.Download, "Download") }
                             },
-                        )
+                        ) { Text(opt.label, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                     }
                 }
             }

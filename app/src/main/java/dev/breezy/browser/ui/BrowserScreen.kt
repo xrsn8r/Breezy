@@ -429,7 +429,7 @@ fun BrowserScreen(
     LaunchedEffect(translateError) {
         if (translateError != null) {
             Toast.makeText(context, "Couldn't translate: $translateError", Toast.LENGTH_SHORT).show()
-            tab?.translateError = null
+            tab.translateError = null
         }
     }
 

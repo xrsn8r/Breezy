@@ -95,7 +95,6 @@ fun HistoryScreen(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
                     }
                     item(key = e.url) {
                         ListItem(
-                            headlineContent = { Text(e.title.ifBlank { UrlInput.display(e.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             supportingContent = { Text(UrlInput.display(e.url) + " · " +
                                 DateUtils.formatDateTime(context, e.lastVisit, DateUtils.FORMAT_SHOW_TIME), maxLines = 1) },
                             trailingContent = {
@@ -103,7 +102,7 @@ fun HistoryScreen(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
                             },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
                             modifier = Modifier.clickable { onOpen(e.url) },
-                        )
+                        ) { Text(e.title.ifBlank { UrlInput.display(e.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                 }
             }

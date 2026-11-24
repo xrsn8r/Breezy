@@ -317,7 +317,7 @@ private fun FrostedToolbar(
                     Icon(
                         Icons.Rounded.Translate,
                         contentDescription = if (translated) "Show original" else
-                            "Translate page from " + dev.breezy.browser.data.Translator.displayName(tab?.translateOffer ?: ""),
+                            "Translate page from " + dev.breezy.browser.data.Translator.displayName(tab.translateOffer ?: ""),
                     )
                 }
             }

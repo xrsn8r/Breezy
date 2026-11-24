@@ -114,7 +114,6 @@ fun BookmarksScreen(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
                 items(shown, key = { it.id }) { b ->
                     var menu by remember { mutableStateOf(false) }
                     ListItem(
-                        headlineContent = { Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = {
                             Text(UrlInput.display(b.url) + if (folder == null && b.folder.isNotBlank()) " · ${b.folder}" else "",
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -134,7 +133,7 @@ fun BookmarksScreen(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
                         },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
                         modifier = Modifier.clickable { onOpen(b.url) },
-                    )
+                    ) { Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }

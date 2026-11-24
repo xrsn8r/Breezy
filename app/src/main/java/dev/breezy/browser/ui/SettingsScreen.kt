@@ -142,7 +142,6 @@ fun SettingsScreen(
                     icon = Icons.Rounded.Palette,
                 ) {
                     ListItem(
-                        headlineContent = { Text("Theme") },
                         supportingContent = {
                             Column {
                                 Spacer(Modifier.height(8.dp))
@@ -151,7 +150,7 @@ fun SettingsScreen(
                             }
                         },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Theme") }
                     ToggleRow("Pure black (AMOLED)", "True black backgrounds in dark theme. Saves battery on OLED screens",
                         AppSettings.pureBlack, AppSettings::updatePureBlack)
                     ToggleRow("Dark mode for websites", "Sites that have a dark theme use it", AppSettings.darkWebPages) {
@@ -159,7 +158,6 @@ fun SettingsScreen(
                         onDarkPagesChanged()
                     }
                     ListItem(
-                        headlineContent = { Text("Force dark on all sites") },
                         supportingContent = { Text("Recolors sites without a dark theme. Can make some pages unreadable") },
                         trailingContent = {
                             Switch(
@@ -172,18 +170,17 @@ fun SettingsScreen(
                             )
                         },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Force dark on all sites") }
                     ToggleRow("Frosted toolbar blur", "Real blur behind the toolbar (Android 16+). Turn off if some pages render blank or half-drawn",
                         AppSettings.frostedToolbar, AppSettings::updateFrostedToolbar)
                     ListItem(
-                        headlineContent = { Text("Toolbar position") },
                         supportingContent = { Text("Long-press the toolbar and drag it up or down") },
                         trailingContent = {
                             TextButton(onClick = { AppSettings.updateToolbarPosition(0f) },
                                 enabled = AppSettings.toolbarPosition != 0f) { Text("Reset") }
                         },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Toolbar position") }
                 }
             }
 
@@ -195,7 +192,6 @@ fun SettingsScreen(
                     icon = Icons.Rounded.TravelExplore,
                 ) {
                     ListItem(
-                        headlineContent = { Text("Search engine") },
                         supportingContent = {
                             Column {
                                 Spacer(Modifier.height(8.dp))
@@ -204,20 +200,17 @@ fun SettingsScreen(
                             }
                         },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Search engine") }
                     ToggleRow("Search suggestions", "Ask ${AppSettings.searchEngine.label} for suggestions as you type",
                         AppSettings.searchSuggestions, AppSettings::updateSearchSuggestions)
                     ListItem(
-                        headlineContent = { Text("Default text size: ${AppSettings.textZoom}%") },
                         supportingContent = {
-                            androidx.compose.material3.Slider(
-                                value = AppSettings.textZoom.toFloat(),
-                                onValueChange = { AppSettings.updateTextZoom(((it / 10).roundToInt()) * 10) },
-                                valueRange = 50f..200f, steps = 14,
-                            )
+                            StepSlider(value = AppSettings.textZoom.toFloat(), valueRange = 50f..200f, steps = 14) {
+                                AppSettings.updateTextZoom(((it / 10).roundToInt()) * 10)
+                            }
                         },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Default text size: ${AppSettings.textZoom}%") }
                     TranslateLanguageRow()
                     ToggleRow("Offer to translate", "Show a translate button in the toolbar when a page is in another language. Translating sends the page's text to Google",
                         AppSettings.offerTranslate, AppSettings::updateOfferTranslate)
@@ -253,11 +246,10 @@ fun SettingsScreen(
                     ToggleRow("Clear data on exit", "Wipe cookies, site data, history and tabs when you leave Breezy",
                         AppSettings.clearOnExit, AppSettings::updateClearOnExit)
                     ListItem(
-                        headlineContent = { Text("Clear browsing data now") },
                         supportingContent = { Text("Cookies, site storage, cache and history") },
                         colors = cardItemColors(),
                         modifier = Modifier.clickable { confirmClear = true },
-                    )
+                    ) { Text("Clear browsing data now") }
                     SubHeader("Secure DNS")
                     SecureDnsRows()
                 }
@@ -286,11 +278,10 @@ fun SettingsScreen(
                     icon = Icons.Rounded.Shield,
                 ) {
                     ListItem(
-                        headlineContent = { Text("Block ads & trackers") },
                         supportingContent = { Text("${numbers.format(state.totalBlocked)} blocked so far") },
                         trailingContent = { Switch(checked = state.enabled, onCheckedChange = Shield::setEnabled) },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Block ads & trackers") }
                     ToggleRow("Fingerprinting protection", "Adds invisible noise to canvas, WebGL and audio, different for every site and session, so sites can't recognise this device",
                         AppSettings.farbling, AppSettings::updateFarbling)
                     ToggleRow("Update lists automatically", "Weekly, on Wi-Fi",
@@ -299,28 +290,25 @@ fun SettingsScreen(
                         SubHeader("Shields down on")
                         state.allowlist.sorted().forEach { host ->
                             ListItem(
-                                headlineContent = { Text(host) },
                                 trailingContent = {
                                     IconButton(onClick = { Shield.setSiteAllowed(host, false) }) {
                                         Icon(Icons.Rounded.Delete, "Turn shields back on for $host")
                                     }
                                 },
                                 colors = cardItemColors(),
-                            )
+                            ) { Text(host) }
                         }
                     }
                     SubHeader("My filters")
                     if (myRules.isEmpty()) {
                         ListItem(
-                            headlineContent = { Text("No custom rules yet") },
                             supportingContent = { Text("Use Menu → Block element on any page to hide things you don't want to see") },
                             colors = cardItemColors(),
-                        )
+                        ) { Text("No custom rules yet") }
                     }
                     myRules.groupBy { it.host }.toSortedMap().forEach { (host, rules) ->
                         rules.forEach { rule ->
                             ListItem(
-                                headlineContent = { Text(host) },
                                 supportingContent = {
                                     Text(rule.selector, maxLines = 2, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
@@ -331,7 +319,7 @@ fun SettingsScreen(
                                     }
                                 },
                                 colors = cardItemColors(),
-                            )
+                            ) { Text(host) }
                         }
                     }
                 }
@@ -348,7 +336,6 @@ fun SettingsScreen(
                     initiallyExpanded = state.pendingChanges,
                 ) {
                     ListItem(
-                        headlineContent = { Text("Update all lists") },
                         supportingContent = { Text("Download the latest versions now") },
                         trailingContent = {
                             FilledTonalButton(onClick = { scope.launch { Shield.updateLists(app) } }, enabled = !state.updating) {
@@ -358,7 +345,7 @@ fun SettingsScreen(
                             }
                         },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Update all lists") }
                     val grouped = state.lists.groupBy { it.category }
                     FilterList.Category.entries.forEach { category ->
                         val lists = grouped[category].orEmpty()
@@ -377,12 +364,11 @@ fun SettingsScreen(
                         }
                         if (category == FilterList.Category.Custom) {
                             ListItem(
-                                headlineContent = { Text("Add filter list") },
                                 supportingContent = { Text("Any ABP / uBlock Origin list by URL") },
                                 leadingContent = { Icon(Icons.Rounded.Add, null) },
                                 colors = cardItemColors(),
                                 modifier = Modifier.clickable { addDialog = true },
-                            )
+                            ) { Text("Add filter list") }
                         }
                     }
                     Text(
@@ -403,19 +389,16 @@ fun SettingsScreen(
                     icon = Icons.Rounded.Download,
                 ) {
                     ListItem(
-                        headlineContent = { Text("Connections per download: ${AppSettings.downloadConnections}") },
                         supportingContent = {
                             Column {
                                 Text("More connections can be faster on servers that support it. Files are saved to Download/Breezy.")
-                                androidx.compose.material3.Slider(
-                                    value = AppSettings.downloadConnections.toFloat(),
-                                    onValueChange = { AppSettings.updateDownloadConnections(it.roundToInt()) },
-                                    valueRange = 1f..8f, steps = 6,
-                                )
+                                StepSlider(value = AppSettings.downloadConnections.toFloat(), valueRange = 1f..8f, steps = 6) {
+                                    AppSettings.updateDownloadConnections(it.roundToInt())
+                                }
                             }
                         },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Connections per download: ${AppSettings.downloadConnections}") }
                     ToggleRow("Background play", "Keep audio and video playing with the screen off, with media controls",
                         AppSettings.backgroundPlay, AppSettings::updateBackgroundPlay)
                     SubHeader("SponsorBlock")
@@ -423,10 +406,9 @@ fun SettingsScreen(
                         AppSettings.sponsorBlock, AppSettings::updateSponsorBlock)
                     if (AppSettings.sponsorBlock) SponsorCategories()
                     ListItem(
-                        headlineContent = { Text("Picture-in-picture") },
                         supportingContent = { Text("Leave the app while a video is fullscreen to keep watching in a small window") },
                         colors = cardItemColors(),
-                    )
+                    ) { Text("Picture-in-picture") }
                 }
             }
 
@@ -447,7 +429,6 @@ fun SettingsScreen(
                     UpdateRow()
                     BackupRows()
                     ListItem(
-                        headlineContent = { Text("Share diagnostics") },
                         supportingContent = { Text("Recent app exits and events, to report a bug. No pages or history") },
                         colors = cardItemColors(),
                         modifier = Modifier.clickable {
@@ -458,7 +439,7 @@ fun SettingsScreen(
                                     .putExtra(android.content.Intent.EXTRA_TEXT, text),
                                 "Share diagnostics"))
                         },
-                    )
+                    ) { Text("Share diagnostics") }
                 }
             }
             item { Spacer(Modifier.navigationBarsPadding()) }
@@ -488,7 +469,6 @@ private fun FilterListRow(
         if (!enabled && active) add("Will be removed")
     }
     ListItem(
-        headlineContent = { Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = { Text(details.joinToString("\n"), maxLines = 3, overflow = TextOverflow.Ellipsis) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -499,7 +479,7 @@ private fun FilterListRow(
             }
         },
         colors = cardItemColors(),
-    )
+    ) { Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 }
 
 @Composable
@@ -568,7 +548,6 @@ private fun SettingsGroup(
     val rotation by androidx.compose.animation.core.animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
     SettingsCard {
         ListItem(
-            headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
             supportingContent = { Text(summary, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             leadingContent = {
                 androidx.compose.foundation.layout.Box(
@@ -583,7 +562,7 @@ private fun SettingsGroup(
             },
             colors = cardItemColors(),
             modifier = Modifier.clickable { expanded = !expanded },
-        )
+        ) { Text(title, style = MaterialTheme.typography.titleMedium) }
         AnimatedVisibility(
             expanded,
             enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
@@ -649,11 +628,10 @@ private fun cardItemColors() = ListItemDefaults.colors(containerColor = Material
 @Composable
 private fun ToggleRow(title: String, summary: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     ListItem(
-        headlineContent = { Text(title) },
         supportingContent = { Text(summary) },
         trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
         colors = cardItemColors(),
-    )
+    ) { Text(title) }
 }
 
 @Composable
@@ -683,11 +661,10 @@ private fun TranslateLanguageRow() {
     else dev.breezy.browser.data.Translator.languages.firstOrNull { it.first == current }?.second ?: current
     androidx.compose.foundation.layout.Box {
         ListItem(
-            headlineContent = { Text("Translate to") },
             supportingContent = { Text(label) },
             colors = cardItemColors(),
             modifier = Modifier.clickable { open = true },
-        )
+        ) { Text("Translate to") }
         androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false },
             modifier = Modifier.heightIn(max = 420.dp)) {
             androidx.compose.material3.DropdownMenuItem(
@@ -730,20 +707,18 @@ private fun BackupRows() {
         }
     }
     ListItem(
-        headlineContent = { Text("Back up") },
         supportingContent = { Text("Save settings, shortcuts, bookmarks, Shields and your filters to a file. Not history, cookies or tabs") },
         colors = cardItemColors(),
         modifier = Modifier.clickable {
             val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
             save.launch("breezy-backup-$day.json")
         },
-    )
+    ) { Text("Back up") }
     ListItem(
-        headlineContent = { Text("Restore") },
         supportingContent = { Text("Replace your current setup with a backup file") },
         colors = cardItemColors(),
         modifier = Modifier.clickable { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
-    )
+    ) { Text("Restore") }
     pending?.let { (root, summary) ->
         AlertDialog(
             onDismissRequest = { pending = null },
@@ -783,7 +758,6 @@ private fun UpdateRow() {
         dev.breezy.browser.data.Updater.Status.Idle -> "Check for updates" to "Version ${dev.breezy.browser.BuildConfig.VERSION_NAME}"
     }
     ListItem(
-        headlineContent = { Text(headline) },
         supportingContent = { Text(detail) },
         trailingContent = {
             if (status is dev.breezy.browser.data.Updater.Status.Checking || status is dev.breezy.browser.data.Updater.Status.Verifying) {
@@ -799,7 +773,7 @@ private fun UpdateRow() {
                 else -> scope.launch { dev.breezy.browser.data.Updater.check(context.applicationContext) }
             }
         },
-    )
+    ) { Text(headline) }
 }
 
 @Composable
@@ -823,14 +797,13 @@ private fun SecureDnsRows() {
         )
         dev.breezy.browser.data.DnsProvider.entries.forEach { p ->
             ListItem(
-                headlineContent = { Text(p.label) },
                 supportingContent = { Text(p.note) },
                 leadingContent = {
                     androidx.compose.material3.RadioButton(selected = AppSettings.dnsProvider == p, onClick = { apply(p) }, enabled = supported)
                 },
                 colors = cardItemColors(),
                 modifier = Modifier.clickable(enabled = supported) { apply(p) },
-            )
+            ) { Text(p.label) }
         }
         if (AppSettings.dnsProvider == dev.breezy.browser.data.DnsProvider.Custom) {
             OutlinedTextField(
@@ -849,7 +822,6 @@ private fun SecureDnsRows() {
             ToggleRow("Strict mode", "Never fall back to your network's DNS if the provider can't be reached",
                 AppSettings.dnsStrict) { apply(AppSettings.dnsProvider, it) }
             ListItem(
-                headlineContent = { Text("Test connection") },
                 supportingContent = { Text(testResult ?: "Check that the provider answers") },
                 colors = cardItemColors(),
                 modifier = Modifier.clickable {
@@ -862,7 +834,7 @@ private fun SecureDnsRows() {
                         }
                     }
                 },
-            )
+            ) { Text("Test connection") }
         }
     }
 }

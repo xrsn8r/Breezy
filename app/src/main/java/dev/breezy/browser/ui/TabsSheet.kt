@@ -28,7 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -53,7 +52,10 @@ fun TabsSheet(
     onNewPrivateTab: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberBottomSheetState(
+        initialValue = androidx.compose.material3.SheetValue.Hidden,
+        enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
+    )) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${tabs.size} tabs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             if (BrowserTab.multiProfileSupported) {
@@ -76,18 +78,13 @@ fun TabsSheet(
                 val selected = t === current
                 val corner by animateFloatAsState(if (selected) 32f else 20f, label = "corner")
                 // Swipe sideways to close (Settings → Search & browsing); the card fades as it goes.
-                val dismiss = androidx.compose.material3.rememberSwipeToDismissBoxState(
-                    confirmValueChange = { v ->
-                        if (v != androidx.compose.material3.SwipeToDismissBoxValue.Settled) onClose(t)
-                        v != androidx.compose.material3.SwipeToDismissBoxValue.Settled
-                    },
-                    positionalThreshold = { it * 0.35f },
-                )
+                val dismiss = androidx.compose.material3.rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.35f })
                 androidx.compose.material3.SwipeToDismissBox(
                     state = dismiss,
                     backgroundContent = {},
                     enableDismissFromStartToEnd = AppSettings.swipeToCloseTabs,
                     enableDismissFromEndToStart = AppSettings.swipeToCloseTabs,
+                    onDismiss = { onClose(t) },
                     modifier = Modifier.graphicsLayer {
                         val f = (1f - kotlin.math.abs(runCatching { dismiss.requireOffset() }.getOrDefault(0f)) / (size.width.coerceAtLeast(1f))).coerceIn(0f, 1f)
                         alpha = 0.3f + 0.7f * f

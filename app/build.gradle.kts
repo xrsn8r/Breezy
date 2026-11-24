@@ -214,8 +214,8 @@ android {
         applicationId = "dev.breezy.browser"
         minSdk = minSdkVersion
         targetSdk = 36
-        versionCode = 31
-        versionName = "0.10.1"
+        versionCode = 32
+        versionName = "0.10.2"
     }
 
     // Optional release signing from the environment (CI secrets); falls back to the debug key.
@@ -245,6 +245,11 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all { it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.maxHeapSize = "2g" }
     }
 
     buildFeatures {
@@ -313,4 +318,9 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303") // real org.json for JVM tests (Android's is a stub)
+    // Screenshot tests: real Compose screens rendered on the JVM (Robolectric native graphics).
+    testImplementation("org.robolectric:robolectric:4.18")
+    testImplementation(platform(libs.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

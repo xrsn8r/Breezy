@@ -98,7 +98,7 @@ object Downloads {
         return id
     }
 
-    fun start(id: Long) = synchronized(lock) {
+    fun start(id: Long): Unit = synchronized(lock) {
         if (running[id]?.isActive == true) return
         mutate(id) { it.copy(status = DownloadStatus.Queued, error = null) }
         running[id] = scope.launch {
@@ -159,7 +159,7 @@ object Downloads {
     fun mimeFor(fileName: String, mime: String?): String {
         val generic = mime.isNullOrBlank() || mime == "application/octet-stream" || mime == "binary/octet-stream" ||
             mime == "application/force-download" || mime == "application/x-download"
-        if (!generic) return mime!!
+        if (!generic) return mime
         val ext = fileName.substringAfterLast('.', "").lowercase()
         if (ext == "apk") return APK_MIME
         return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"

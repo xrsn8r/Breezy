@@ -113,7 +113,12 @@ fun MenuSheet(
         dev.breezy.browser.data.CrashReport.note("menu opened")
         onDispose { dev.breezy.browser.data.CrashReport.note("menu closed") }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, sheetGesturesEnabled = false, dragHandle = null) {
+    val frost = rememberFrost()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss, sheetState = sheetState, sheetGesturesEnabled = false, dragHandle = null,
+        containerColor = frost.containerColor(), scrimColor = frost.scrimColor(),
+    ) {
+        FrostWindow(frost)
         Column(
             Modifier.logTouches { "${sheetState.currentValue}->${sheetState.targetValue}" }.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),

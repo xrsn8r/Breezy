@@ -64,6 +64,7 @@ object AppSettings {
      * whether it causes some pages (X login, blurred-backdrop dialogs) to render incorrectly: the
      * window backdrop forces offscreen rendering, which WebView doesn't always survive.
      */
+    var frostedSurfaces by mutableStateOf(true); private set
     var frostedToolbar by mutableStateOf(false)
         private set
 
@@ -118,6 +119,7 @@ object AppSettings {
         darkWebPages = prefs.getBoolean("dark_web_pages", true)
         forceDarkAllSites = prefs.getBoolean("force_dark_all_sites", false)
         frostedToolbar = prefs.getBoolean("frosted_toolbar", false)
+        frostedSurfaces = prefs.getBoolean("frosted_surfaces", true)
         identifyAsChrome = prefs.getBoolean("identify_as_chrome", true)
         httpsOnly = prefs.getBoolean("https_only", true)
         stripTracking = prefs.getBoolean("strip_tracking", true)
@@ -191,6 +193,8 @@ object AppSettings {
         forceDarkAllSites = value
         prefs.edit { putBoolean("force_dark_all_sites", value) }
     }
+
+    fun updateFrostedSurfaces(v: Boolean) { frostedSurfaces = v; prefs.edit { putBoolean("frosted_surfaces", v) } }
 
     fun updateFrostedToolbar(value: Boolean) {
         frostedToolbar = value

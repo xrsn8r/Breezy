@@ -52,10 +52,12 @@ fun TabsSheet(
     onNewPrivateTab: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberBottomSheetState(
+    val frost = rememberFrost()
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = frost.containerColor(), scrimColor = frost.scrimColor(), sheetState = androidx.compose.material3.rememberBottomSheetState(
         initialValue = androidx.compose.material3.SheetValue.Hidden,
         enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
     )) {
+        FrostWindow(frost)
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${tabs.size} tabs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             if (BrowserTab.multiProfileSupported) {

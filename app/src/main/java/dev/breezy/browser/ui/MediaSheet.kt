@@ -19,7 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,12 +73,14 @@ fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Un
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    FrostedSheet(onDismissRequest = onDismiss) {
+        androidx.compose.foundation.layout.Spacer(Modifier.height(20.dp))
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text("Media on this page", style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
             if (media.isEmpty()) {
                 ListItem(
+                    colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                     supportingContent = {
                         Text(if (tab.streamOnlyMedia) "It's streamed in separate pieces (like YouTube) rather than as a file."
                         else "Start playing the video, then check again.")
@@ -90,15 +91,18 @@ fun MediaSheet(tab: BrowserTab, onStarted: (String) -> Unit, onDismiss: () -> Un
             for (m in media) {
                 when (val p = probes[m.url] ?: Probe.Loading) {
                     Probe.Loading -> ListItem(
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                         supportingContent = { Text("Checking…") },
                         leadingContent = { LoadingIndicator(Modifier.size(28.dp)) },
                     ) { Text(fileLabel(m), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     is Probe.Failed -> ListItem(
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                         supportingContent = { Text(p.reason, color = MaterialTheme.colorScheme.error) },
                         leadingContent = { Icon(Icons.Rounded.Info, null) },
                     ) { Text(fileLabel(m), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     is Probe.Ready -> p.options.forEach { opt ->
                         ListItem(
+                            colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                             supportingContent = { Text(opt.detail, maxLines = 1) },
                             leadingContent = { Icon(if (opt.video) Icons.Rounded.VideoFile else Icons.Rounded.AudioFile, null) },
                             trailingContent = {

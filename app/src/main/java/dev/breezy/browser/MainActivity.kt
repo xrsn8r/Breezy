@@ -197,7 +197,8 @@ class MainActivity : ComponentActivity(), TabHost {
             tabs.current?.let { it.mediaPause(); it.setVideoFocus(false); it.webView.keepVisible = false; it.onPause() }
             return
         }
-        if (keepPlaying) {
+        // Not when the activity is going away for good (onDestroy stops the service right after).
+        if (keepPlaying && !isFinishing && !isChangingConfigurations) {
             dev.breezy.browser.media.MediaHub.tab = tabs.current
             ensureNotificationPermission()
             dev.breezy.browser.media.MediaPlaybackService.update(this)

@@ -26,7 +26,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,7 +67,8 @@ fun ShieldSheet(
     val siteOn = host != null && host !in state.allowlist
     val active = state.enabled && siteOn && state.ready
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    FrostedSheet(onDismissRequest = onDismiss) {
+        androidx.compose.foundation.layout.Spacer(Modifier.height(20.dp))
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -135,12 +135,14 @@ fun ShieldSheet(
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
             ListItem(
+                colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                 supportingContent = {
                     Text("${NumberFormat.getIntegerInstance().format(state.totalBlocked)} blocked so far")
                 },
                 trailingContent = { Switch(checked = state.enabled, onCheckedChange = onGlobalToggle) },
             ) { Text("Block ads & trackers everywhere") }
             ListItem(
+                colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                 supportingContent = {
                     Text(
                         state.lastError?.let { "Update failed: $it" }

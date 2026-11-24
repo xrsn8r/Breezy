@@ -30,6 +30,7 @@ class MediaPlaybackService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         session = MediaSessionCompat(this, "Breezy").apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() = MediaHub.play()
@@ -51,10 +52,12 @@ class MediaPlaybackService : Service() {
         when (intent?.action) {
             ACTION_PLAY -> MediaHub.play()
             ACTION_PAUSE -> MediaHub.pause()
-            ACTION_STOP -> { MediaHub.pause(); stopSelf(); return START_NOT_STICKY }
+            ACTION_STOP -> { MediaHub.pause(); finishNow(); return START_NOT_STICKY }
         }
         val tab = MediaHub.tab
-        if (tab == null) { stopSelf(); return START_NOT_STICKY }
+        // A service started with startForegroundService() must call startForeground() even when
+        // it's about to stop, or Android crashes the app (ForegroundServiceDidNotStartInTime).
+        if (tab == null || stopRequested) { stopRequested = false; finishNow(); return START_NOT_STICKY }
         val playing = tab.media.playing
         val title = tab.media.title.ifBlank { tab.title.ifBlank { "Playing in Breezy" } }
         session.setMetadata(
@@ -76,7 +79,30 @@ class MediaPlaybackService : Service() {
             this, NOTIFICATION_ID, notification,
             if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0,
         )
+        inForeground = true
+        startPending = false
         return START_NOT_STICKY
+    }
+
+    /** Satisfy the startForeground() contract with a placeholder, then go away. */
+    private fun finishNow() {
+        startPending = false
+        if (!inForeground) {
+            val placeholder = NotificationCompat.Builder(this, CHANNEL)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle("Breezy")
+                .setSilent(true)
+                .build()
+            runCatching {
+                ServiceCompat.startForeground(
+                    this, NOTIFICATION_ID, placeholder,
+                    if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0,
+                )
+            }
+        }
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        inForeground = false
+        stopSelf()
     }
 
     private fun action(action: String, code: Int) = PendingIntent.getService(
@@ -109,6 +135,8 @@ class MediaPlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        inForeground = false
+        running = false
         session.release()
         super.onDestroy()
     }
@@ -122,11 +150,28 @@ class MediaPlaybackService : Service() {
         const val ACTION_PAUSE = "dev.breezy.browser.media.PAUSE"
         const val ACTION_STOP = "dev.breezy.browser.media.STOP"
 
+        /** True between onStartCommand's startForeground() and onDestroy. Main thread. */
+        private var inForeground = false
+        /** True once the service has been created (it may not have reached startForeground yet). */
+        private var running = false
+        /** stop() arrived before the service could call startForeground(); it stops right after. */
+        private var stopRequested = false
+        /** A startForegroundService() call is in flight and not yet answered by startForeground(). */
+        private var startPending = false
+
         fun update(context: Context) {
+            startPending = true
+            stopRequested = false
             runCatching { context.startForegroundService(Intent(context, MediaPlaybackService::class.java)) }
+                .onFailure { startPending = false }
         }
 
         fun stop(context: Context) {
+            if (startPending && !inForeground) {
+                // Stopping now would crash the app: let the service start, then stop itself.
+                stopRequested = true
+                return
+            }
             context.stopService(Intent(context, MediaPlaybackService::class.java))
         }
     }

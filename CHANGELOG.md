@@ -2,6 +2,11 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.6 (test build)
+- Fixed a crash when Breezy closed while media was playing in the background (the playback
+  notification service was stopped before it could start).
+- The Shields and media sheets are frosted too.
+
 ## 0.11.5 (test build)
 - Fixed: the frosted search screen flickered over pages playing video. It now blurs a still
   snapshot of the page taken as the search opens, so nothing behind it can flicker.

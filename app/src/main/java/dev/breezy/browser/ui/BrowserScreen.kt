@@ -206,14 +206,17 @@ fun BrowserScreen(
                 enter = fadeIn() + slideInVertically { it / 8 },
                 exit = fadeOut() + slideOutVertically { it / 8 },
             ) {
-                Omnibox(
-                    privateMode = (newTabMode && newTabPrivate) || (!newTabMode && tab?.isPrivate == true),
-                    initial = if (newTabMode) "" else tab?.url.orEmpty(),
-                    tabs = tabs.tabs,
-                    onGo = ::navigate,
-                    onSwitchTab = { tabs.select(it); omniboxOpen = false; newTabMode = false },
-                    onDismiss = { omniboxOpen = false; newTabMode = false; newTabPrivate = false },
-                )
+                val closeOmnibox = { omniboxOpen = false; newTabMode = false; newTabPrivate = false }
+                FrostedScreen(onDismissRequest = closeOmnibox) {
+                    Omnibox(
+                        privateMode = (newTabMode && newTabPrivate) || (!newTabMode && tab?.isPrivate == true),
+                        initial = if (newTabMode) "" else tab?.url.orEmpty(),
+                        tabs = tabs.tabs,
+                        onGo = ::navigate,
+                        onSwitchTab = { tabs.select(it); omniboxOpen = false; newTabMode = false },
+                        onDismiss = closeOmnibox,
+                    )
+                }
             }
 
             // --- Reader mode -------------------------------------------------------------------

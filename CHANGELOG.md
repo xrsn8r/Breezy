@@ -2,6 +2,10 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.4 (test build)
+- **Frosted search screen**: the page behind the search box and suggestions is blurred, and the
+  suggestions sit on frosted glass. Follows the Frosted surfaces setting.
+
 ## 0.11.3 (test build)
 - The frosted area now follows the sheet's rounded corners (no more square corner peeking out).
 - The highlight edge is brightest along the top and fades into the sheet down the sides.

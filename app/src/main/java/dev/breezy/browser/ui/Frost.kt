@@ -141,3 +141,55 @@ fun FrostedSheet(
         }
     }
 }
+
+/**
+ * A full-screen frosted layer for overlays like the search screen: the whole page behind is
+ * blurred by the compositor (FLAG_BLUR_BEHIND, Android 12+) and [content] draws on a translucent
+ * surface. When frosting is off or unavailable, [content] is shown in place as before, so the
+ * screen keeps working exactly as it did. [content] receives whether it's frosted.
+ */
+@Composable
+fun FrostedScreen(onDismissRequest: () -> Unit, content: @Composable (frosted: Boolean) -> Unit) {
+    if (!AppSettings.frostedSurfaces || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        content(false)
+        return
+    }
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        val view = LocalView.current
+        val window = ((view as? DialogWindowProvider) ?: (view.parent as? DialogWindowProvider))?.window
+        val blurPx = with(LocalDensity.current) { 40.dp.roundToPx() }
+        val blurred = remember { mutableStateOf(false) }
+        DisposableEffect(window) {
+            if (window == null) return@DisposableEffect onDispose { }
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            window.setWindowAnimations(android.R.style.Animation_Toast) // quick fade
+            @Suppress("DEPRECATION")
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.attributes = window.attributes.apply { fitInsetsTypes = 0 }
+            }
+            val listener = Consumer<Boolean> { allowed ->
+                if (allowed) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    window.attributes = window.attributes.apply { blurBehindRadius = blurPx }
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                }
+                blurred.value = allowed
+            }
+            window.windowManager.addCrossWindowBlurEnabledListener(listener)
+            onDispose { window.windowManager.removeCrossWindowBlurEnabledListener(listener) }
+        }
+        CompositionLocalProvider(
+            LocalContentColor provides MaterialTheme.colorScheme.onSurface,
+            LocalFrosted provides blurred.value,
+        ) {
+            content(blurred.value)
+        }
+    }
+}

@@ -74,7 +74,13 @@ fun Omnibox(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxSize()) {
+    // Frosted (blurred page behind): a translucent surface; otherwise the usual solid one.
+    val frosted = LocalFrosted.current
+    val rowColor = if (frosted) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.surfaceContainer
+    Surface(
+        color = if (frosted) MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.62f) else MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxSize(),
+    ) {
         // The text field sits at the bottom, just above the keyboard (where the toolbar was), with
         // suggestions stacking upward from it.
         Column(Modifier.statusBarsPadding().navigationBarsPadding().imePadding()) {
@@ -105,7 +111,7 @@ fun Omnibox(
                             leadingContent = {
                                 Icon(if (isSearch) Icons.Rounded.Search else Icons.Rounded.Language, null)
                             },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            colors = ListItemDefaults.colors(containerColor = rowColor),
                             modifier = Modifier.clickable { onGo(query) },
                         ) { Text(if (isSearch) "Search “$query”" else resolved, maxLines = 1) }
                     }
@@ -116,7 +122,7 @@ fun Omnibox(
                     ListItem(
                         supportingContent = { Text(UrlInput.display(b.url), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Icon(Icons.Rounded.Star, null, tint = MaterialTheme.colorScheme.primary) },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        colors = ListItemDefaults.colors(containerColor = rowColor),
                         modifier = Modifier.clickable { onGo(b.url) },
                     ) { Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
@@ -124,7 +130,7 @@ fun Omnibox(
                     ListItem(
                         supportingContent = { Text(h.url.removePrefix("https://").removePrefix("www."), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        colors = ListItemDefaults.colors(containerColor = rowColor),
                         modifier = Modifier.clickable { onGo(h.url) },
                     ) { Text(h.title.ifBlank { UrlInput.display(h.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
@@ -138,7 +144,7 @@ fun Omnibox(
                                     modifier = Modifier.rotate(-90f))
                             }
                         },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        colors = ListItemDefaults.colors(containerColor = rowColor),
                         modifier = Modifier.clickable { onGo(sug) },
                     ) { Text(sug, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
@@ -147,7 +153,7 @@ fun Omnibox(
                         ListItem(
                             supportingContent = { Text(UrlInput.display(t.url), maxLines = 1) },
                             leadingContent = { Favicon(t) },
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            colors = ListItemDefaults.colors(containerColor = rowColor),
                             modifier = Modifier.clickable { onSwitchTab(t) },
                         ) { Text(t.title.ifEmpty { "New tab" }, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
@@ -181,8 +187,8 @@ fun Omnibox(
                         }
                     },
                     colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        unfocusedContainerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        focusedContainerColor = frostedFill(MaterialTheme.colorScheme.surfaceContainerHighest),
                     ),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { onGo(value.text) }),

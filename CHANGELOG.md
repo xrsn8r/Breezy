@@ -2,6 +2,12 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.10.5
+- **Fixed: menu items sometimes ignored taps.** The menu could be dragged between half and full
+  height, and small finger movements while tapping were taken as drags, swallowing the tap
+  (diagnostics showed the menu bouncing between heights). The menu now opens at full height and
+  can't be dragged; close it by tapping outside it or with Back.
+
 ## 0.10.4
 - More detailed diagnostics for the unresponsive-menu issue: what happened to each touch, the
   menu's animation state, and the app window's lifecycle and focus.

@@ -102,21 +102,20 @@ fun MenuSheet(
     val itemModifier = Modifier.clip(RoundedCornerShape(16.dp))
     var pageOpen by rememberSaveable { mutableStateOf(true) }
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
+    // Straight to full height, and no sheet drag gestures. With dragging on, small finger movements
+    // while tapping were taken as drags of the sheet (it bounced between half and full height) and
+    // the drag swallowed the tap, so rows sometimes ignored taps. Close with a tap outside or Back.
     val sheetState = androidx.compose.material3.rememberBottomSheetState(
         initialValue = androidx.compose.material3.SheetValue.Hidden,
-        enabledValues = setOf(
-            androidx.compose.material3.SheetValue.Hidden,
-            androidx.compose.material3.SheetValue.PartiallyExpanded,
-            androidx.compose.material3.SheetValue.Expanded,
-        ),
+        enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
     )
     androidx.compose.runtime.DisposableEffect(Unit) {
         dev.breezy.browser.data.CrashReport.note("menu opened")
         onDispose { dev.breezy.browser.data.CrashReport.note("menu closed") }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, sheetGesturesEnabled = false, dragHandle = null) {
         Column(
-            Modifier.logTouches { "${sheetState.currentValue}->${sheetState.targetValue}" }.fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.logTouches { "${sheetState.currentValue}->${sheetState.targetValue}" }.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
             // --- Most-used actions --------------------------------------------------------------

@@ -2,6 +2,11 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.9.5
+- **Site icons on home shortcuts**: shortcuts show just the site's own colour icon, like the tab
+  switcher, instead of a letter in a shape. Shortcuts without an icon use a plain circle. Icons are saved as you browse (never from private tabs); a
+  shortcut to a site you haven't visited fetches its icon once.
+
 ## 0.9.4
 - **Swipe up on the toolbar** to open the tab switcher. (Long-press and drag still moves the
   toolbar.)

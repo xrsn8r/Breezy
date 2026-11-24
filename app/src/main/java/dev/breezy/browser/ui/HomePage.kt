@@ -46,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -60,12 +61,6 @@ import dev.breezy.browser.AppSettings
 import dev.breezy.browser.Shortcut
 import dev.breezy.browser.browser.UrlInput
 import java.text.NumberFormat
-
-// Expressive shapes cycled across shortcut tiles.
-private val tileShapes = listOf(
-    MaterialShapes.Cookie9Sided, MaterialShapes.Clover4Leaf, MaterialShapes.SoftBurst,
-    MaterialShapes.Cookie6Sided, MaterialShapes.Sunny, MaterialShapes.Pill,
-)
 
 @Composable
 fun HomePage(totalBlocked: Long, onOpen: (String) -> Unit) {
@@ -157,7 +152,8 @@ private fun ShortcutGrid(
             ShortcutTile(
                 label = s.name,
                 letter = s.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "•",
-                shape = tileShapes[i % tileShapes.size],
+                url = s.url,
+                shape = MaterialShapes.Circle,
                 onClick = { onOpen(s.url) },
                 onLongClick = { onEdit(s) },
                 accent = i % 3,
@@ -172,6 +168,7 @@ private fun ShortcutGrid(
 private fun ShortcutTile(
     label: String,
     letter: String?,
+    url: String? = null,
     shape: androidx.graphics.shapes.RoundedPolygon,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -184,6 +181,10 @@ private fun ShortcutTile(
         1 -> colors.secondaryContainer to colors.onSecondaryContainer
         2 -> colors.tertiaryContainer to colors.onTertiaryContainer
         else -> colors.surfaceContainerHighest to colors.onSurfaceVariant
+    }
+    // The site's own icon, like in the tab switcher; the letter shows until (or unless) one exists.
+    val icon by androidx.compose.runtime.produceState<android.graphics.Bitmap?>(null, url, dev.breezy.browser.data.Favicons.version) {
+        value = url?.let { dev.breezy.browser.data.Favicons.load(it) }
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -198,11 +199,22 @@ private fun ShortcutTile(
             )
             .padding(vertical = 6.dp),
     ) {
+        val bitmap = icon
+        // With a site icon: just the icon, no tile behind it. Otherwise a plain circle with a letter.
         Box(
-            Modifier.size(56.dp).clip(shape.toShape()).background(bg),
+            Modifier.size(56.dp).then(
+                if (bitmap != null) Modifier else Modifier.clip(shape.toShape()).background(bg),
+            ),
             contentAlignment = Alignment.Center,
         ) {
-            if (letter == null) Icon(Icons.Rounded.Add, contentDescription = null, tint = fg)
+            if (bitmap != null) {
+                androidx.compose.foundation.Image(
+                    bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                    modifier = Modifier.size(48.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
+                )
+            } else if (letter == null) Icon(Icons.Rounded.Add, contentDescription = null, tint = fg)
             else Text(letter, color = fg, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(6.dp))

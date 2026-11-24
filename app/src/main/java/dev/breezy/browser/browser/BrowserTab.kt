@@ -777,6 +777,10 @@ class BrowserTab(
 
         override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
             favicon = icon
+            val page = url
+            if (icon != null && !isPrivate && page.startsWith("http")) {
+                appScope.launch(kotlinx.coroutines.Dispatchers.IO) { dev.breezy.browser.data.Favicons.save(page, icon) }
+            }
         }
 
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {

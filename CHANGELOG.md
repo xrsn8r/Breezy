@@ -2,6 +2,12 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.9.3
+- **Smarter language detection**: Breezy reads the page's text to decide its language (on your
+  device, nothing is sent), instead of trusting what the site declares. Pages like French
+  articles on politico.eu, which label everything English, now get the translate button.
+  Single-page sites are re-checked as you move around them.
+
 ## 0.9.2
 - **Translate button in the toolbar**: when a page is in another language, a translate button
   appears next to Shields. Tap it to translate; tap again to show the original. Nothing is

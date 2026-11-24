@@ -142,15 +142,32 @@ class BrowserTab(
         translateOffer = null
     }
 
+    /**
+     * Decide whether to show the translate button. The page's own text decides (sites often
+     * declare one language for everything, like politico.eu marking French articles "en"), using
+     * Android's on-device language detection; the HTML lang attribute is only a fallback.
+     * Nothing leaves the device here.
+     */
     private fun checkTranslateOffer() {
         if (!AppSettings.offerTranslate || translatedFrom != null) return
         if (!url.startsWith("http")) return
-        webView.evaluateJavascript("(document.documentElement.lang||'')") { raw ->
-            val lang = raw?.trim('"')?.trim().orEmpty()
-            val target = dev.breezy.browser.data.Translator.target(AppSettings.translateTo)
-            if (dev.breezy.browser.data.Translator.differs(lang, target) &&
-                lang.substringBefore('-').lowercase() !in declinedTranslations && translatedFrom == null
-            ) translateOffer = lang
+        val checkedUrl = url
+        webView.evaluateJavascript(TEXT_SAMPLE_JS) { raw ->
+            val o = runCatching { org.json.JSONObject(org.json.JSONTokener(raw).nextValue() as String) }.getOrNull()
+                ?: return@evaluateJavascript
+            val declared = o.optString("lang")
+            val sample = o.optString("text")
+            appScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                val detected = dev.breezy.browser.data.Translator.detect(appContext, sample)
+                val lang = detected ?: declared
+                val target = dev.breezy.browser.data.Translator.target(AppSettings.translateTo)
+                val offer = dev.breezy.browser.data.Translator.differs(lang, target) &&
+                    lang.substringBefore('-').lowercase() !in declinedTranslations
+                main.post {
+                    if (url != checkedUrl || translatedFrom != null) return@post
+                    translateOffer = if (offer) lang else null
+                }
+            }
         }
     }
 
@@ -730,6 +747,8 @@ class BrowserTab(
             if (!isPrivate && !isReload && url.startsWith("http")) {
                 appScope.launch { dev.breezy.browser.data.History.record(url, title) }
             }
+            // Single-page sites change content without a page load: look again once it settles.
+            if (!isReload) main.postDelayed({ checkTranslateOffer() }, 1500)
         }
     }
 
@@ -1127,6 +1146,15 @@ class BrowserTab(
         val multiProfileSupported: Boolean by lazy { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }
         private const val COSMETIC = "adblock/cosmetic.js"
         private const val PRIVACY = "breezy/privacy.js"
+        /** ~2000 chars of the page's main text plus its declared language, as a JSON string. */
+        private const val TEXT_SAMPLE_JS = """(function(){
+  var root=document.querySelector('article,main,[role=main]')||document.body;if(!root)return JSON.stringify({});
+  var out='',els=root.querySelectorAll('h1,h2,h3,p,li,td,blockquote,figcaption');
+  for(var i=0;i<els.length&&out.length<2000;i++){var e=els[i];
+    if(e.closest('nav,header,footer,aside,script,style,code,pre,[translate=no],.notranslate'))continue;
+    var t=(e.innerText||'').replace(/\s+/g,' ').trim();if(t.length>20)out+=t+' ';}
+  if(out.length<200)out=(root.innerText||'').replace(/\s+/g,' ').slice(0,2000);
+  return JSON.stringify({lang:document.documentElement.lang||'',text:out});})()"""
         private const val SPONSORBLOCK = "breezy/sponsorblock.js"
         private const val TRANSLATE = "breezy/translate.js"
         private val YOUTUBE_ORIGINS = setOf("https://www.youtube.com", "https://m.youtube.com", "https://youtube.com")

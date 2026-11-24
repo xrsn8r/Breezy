@@ -38,6 +38,27 @@ object Translator {
         return a.length in 2..3 && a != b
     }
 
+    /**
+     * Language of [text] using Android's on-device detector (API 29+), as a BCP-47 code, or null
+     * when unsure / unavailable. Must not be called on the main thread.
+     */
+    fun detect(context: android.content.Context, text: String): String? {
+        if (text.length < 40 || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return null
+        return runCatching {
+            val tc = context.getSystemService(android.view.textclassifier.TextClassificationManager::class.java)
+                .textClassifier
+            val res = tc.detectLanguage(android.view.textclassifier.TextLanguage.Request.Builder(text.take(2000)).build())
+            var best: android.icu.util.ULocale? = null
+            var bestScore = 0f
+            for (i in 0 until res.localeHypothesisCount) {
+                val loc = res.getLocale(i)
+                val score = res.getConfidenceScore(loc)
+                if (score > bestScore) { best = loc; bestScore = score }
+            }
+            best?.takeIf { bestScore >= 0.5f }?.toLanguageTag()
+        }.getOrNull()
+    }
+
     data class Result(val texts: List<String>, val sourceLang: String?)
 
     /** Translate [texts] to [target]; the source language is detected per string. */

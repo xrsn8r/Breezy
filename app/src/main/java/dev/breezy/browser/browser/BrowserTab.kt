@@ -126,7 +126,7 @@ class BrowserTab(
     private val declinedTranslations = HashSet<String>()
 
     fun translate() {
-        translateOffer = null
+        // translateOffer is kept, so the toolbar button stays to switch back and forth.
         translateError = null
         translatedFrom = "…"
         webView.evaluateJavascript(asset(webView.context, TRANSLATE), null)

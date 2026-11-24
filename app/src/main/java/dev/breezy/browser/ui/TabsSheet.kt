@@ -34,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import dev.breezy.browser.AppSettings
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.breezy.browser.browser.BrowserTab
@@ -73,37 +75,56 @@ fun TabsSheet(
             items(tabs, key = { it.id }) { t ->
                 val selected = t === current
                 val corner by animateFloatAsState(if (selected) 32f else 20f, label = "corner")
-                Card(
-                    onClick = { onSelect(t) },
-                    shape = RoundedCornerShape(corner.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ),
-                    modifier = Modifier.height(120.dp),
+                // Swipe sideways to close (Settings → Search & browsing); the card fades as it goes.
+                val dismiss = androidx.compose.material3.rememberSwipeToDismissBoxState(
+                    confirmValueChange = { v ->
+                        if (v != androidx.compose.material3.SwipeToDismissBoxValue.Settled) onClose(t)
+                        v != androidx.compose.material3.SwipeToDismissBoxValue.Settled
+                    },
+                    positionalThreshold = { it * 0.35f },
+                )
+                androidx.compose.material3.SwipeToDismissBox(
+                    state = dismiss,
+                    backgroundContent = {},
+                    enableDismissFromStartToEnd = AppSettings.swipeToCloseTabs,
+                    enableDismissFromEndToStart = AppSettings.swipeToCloseTabs,
+                    modifier = Modifier.graphicsLayer {
+                        val f = (1f - kotlin.math.abs(runCatching { dismiss.requireOffset() }.getOrDefault(0f)) / (size.width.coerceAtLeast(1f))).coerceIn(0f, 1f)
+                        alpha = 0.3f + 0.7f * f
+                    },
                 ) {
-                    Column(Modifier.padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (t.isPrivate) Icon(Icons.Rounded.VisibilityOff, "Private", Modifier.size(20.dp))
-                            else Favicon(t, 20)
-                            Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { onClose(t) }) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Close tab")
+                    Card(
+                        onClick = { onSelect(t) },
+                        shape = RoundedCornerShape(corner.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ),
+                        modifier = Modifier.height(120.dp),
+                    ) {
+                        Column(Modifier.padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (t.isPrivate) Icon(Icons.Rounded.VisibilityOff, "Private", Modifier.size(20.dp))
+                                else Favicon(t, 20)
+                                Spacer(Modifier.weight(1f))
+                                IconButton(onClick = { onClose(t) }) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Close tab")
+                                }
                             }
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                t.title.ifEmpty { "New tab" },
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                UrlInput.display(t.url),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            t.title.ifEmpty { "New tab" },
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            UrlInput.display(t.url),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                 }
             }

@@ -86,6 +86,7 @@ object AppSettings {
     /** Target language code, or "" for the device language. */
     var translateTo by mutableStateOf(""); private set
     var offerTranslate by mutableStateOf(true); private set
+    var swipeToCloseTabs by mutableStateOf(true); private set
     // --- Appearance ---
     var themeMode by mutableStateOf(ThemeMode.System); private set
     var pureBlack by mutableStateOf(false); private set
@@ -135,6 +136,7 @@ object AppSettings {
             ?: dev.breezy.browser.data.SponsorBlock.defaultCategories
         translateTo = prefs.getString("translate_to", "")!!
         offerTranslate = prefs.getBoolean("offer_translate", true)
+        swipeToCloseTabs = prefs.getBoolean("swipe_close_tabs", true)
         themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "System")!!) }.getOrDefault(ThemeMode.System)
         pureBlack = prefs.getBoolean("pure_black", false)
         dnsProvider = runCatching { dev.breezy.browser.data.DnsProvider.valueOf(prefs.getString("dns_provider", "Off")!!) }
@@ -211,6 +213,7 @@ object AppSettings {
         prefs.edit { putStringSet("sponsor_categories", sponsorCategories) }
     }
     fun updateTranslateTo(v: String) { translateTo = v; prefs.edit { putString("translate_to", v) } }
+    fun updateSwipeToCloseTabs(v: Boolean) { swipeToCloseTabs = v; prefs.edit { putBoolean("swipe_close_tabs", v) } }
     fun updateOfferTranslate(v: Boolean) { offerTranslate = v; prefs.edit { putBoolean("offer_translate", v) } }
 
     fun updateThemeMode(v: ThemeMode) { themeMode = v; prefs.edit { putString("theme_mode", v.name) } }

@@ -2,6 +2,13 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.9.2
+- **Translate button in the toolbar**: when a page is in another language, a translate button
+  appears next to Shields. Tap it to translate; tap again to show the original. Nothing is
+  translated until you tap it.
+- **Swipe to close tabs**: swipe a tab sideways in the tab switcher to close it (Undo still
+  works). Can be turned off in Settings → Search & browsing.
+
 ## 0.9.1
 - **SponsorBlock fixed**: segments are now caught even when YouTube's player hides playback
   events from other scripts, the "Skipped" bar shows in fullscreen, and real segments are no

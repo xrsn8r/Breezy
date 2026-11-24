@@ -219,8 +219,10 @@ fun SettingsScreen(
                         colors = cardItemColors(),
                     )
                     TranslateLanguageRow()
-                    ToggleRow("Offer to translate", "When a page is in another language. Translation sends the page's text to Google",
+                    ToggleRow("Offer to translate", "Show a translate button in the toolbar when a page is in another language. Translating sends the page's text to Google",
                         AppSettings.offerTranslate, AppSettings::updateOfferTranslate)
+                    ToggleRow("Swipe to close tabs", "Swipe a tab sideways in the tab switcher to close it",
+                        AppSettings.swipeToCloseTabs, AppSettings::updateSwipeToCloseTabs)
                     ToggleRow("Pull to refresh", "Swipe down at the top of a page to reload it",
                         AppSettings.pullToRefresh, AppSettings::updatePullToRefresh)
                     ToggleRow("Force allow zoom", "Pinch-zoom on sites that try to disable it",

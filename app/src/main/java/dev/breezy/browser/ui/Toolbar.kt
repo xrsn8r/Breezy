@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RemoveModerator
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Badge
@@ -109,6 +110,7 @@ fun MovableBrowserBar(
     onCopyLink: () -> Unit,
     mediaCount: Int = 0,
     onMedia: () -> Unit = {},
+    onTranslate: () -> Unit = {},
 ) {
     BoxWithConstraints(
         Modifier
@@ -199,6 +201,7 @@ fun MovableBrowserBar(
                 onPillPositioned = { pillBounds = it },
                 mediaCount = mediaCount,
                 onMedia = onMedia,
+                onTranslate = onTranslate,
                 expanded = expanded || dragging,
                 tab = tab,
                 tabCount = tabCount,
@@ -226,6 +229,7 @@ private fun FrostedToolbar(
     onPillPositioned: (Rect) -> Unit,
     mediaCount: Int,
     onMedia: () -> Unit,
+    onTranslate: () -> Unit,
     expanded: Boolean,
     tab: BrowserTab?,
     tabCount: Int,
@@ -276,6 +280,22 @@ private fun FrostedToolbar(
                     Icon(
                         if (shieldsActive) Icons.Rounded.Shield else Icons.Rounded.RemoveModerator,
                         contentDescription = "Shields",
+                    )
+                }
+            }
+            // Appears when the page is in another language (tap to translate), and stays lit while
+            // translated (tap to show the original). Nothing is translated until it's tapped.
+            val translated = tab?.translatedFrom != null
+            if (tab?.translateOffer != null || translated) {
+                IconButton(
+                    onClick = onTranslate,
+                    colors = if (translated) androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors()
+                    else androidx.compose.material3.IconButtonDefaults.iconButtonColors(),
+                ) {
+                    Icon(
+                        Icons.Rounded.Translate,
+                        contentDescription = if (translated) "Show original" else
+                            "Translate page from " + dev.breezy.browser.data.Translator.displayName(tab?.translateOffer ?: ""),
                     )
                 }
             }

@@ -186,6 +186,7 @@ fun BrowserScreen(
                 onSearch = { omniboxOpen = true },
                 mediaCount = tab?.detectedMedia?.size ?: 0,
                 onMedia = { mediaOpen = true },
+                onTranslate = { tab?.let { if (it.translatedFrom != null) it.showOriginal() else it.translate() } },
                 onCopyLink = {
                     // Read the selected tab at copy time, not when this lambda was created.
                     val url = tabs.current?.url?.takeIf { it.isNotEmpty() } ?: return@MovableBrowserBar
@@ -409,19 +410,7 @@ fun BrowserScreen(
         }, onDismiss = { updateNotes = null })
     }
 
-    // Translation: offer when the page's language differs from yours; report errors.
-    val offer = tab?.translateOffer
-    LaunchedEffect(tab, offer) {
-        val t = tab ?: return@LaunchedEffect
-        val lang = offer ?: return@LaunchedEffect
-        val result = snackbar.showSnackbar(
-            message = "Page is in ${dev.breezy.browser.data.Translator.displayName(lang)}",
-            actionLabel = "Translate",
-            withDismissAction = true,
-            duration = SnackbarDuration.Long,
-        )
-        if (result == SnackbarResult.ActionPerformed) t.translate() else t.declineTranslate()
-    }
+    // Translation errors (the offer itself is the translate button in the toolbar).
     val translateError = tab?.translateError
     LaunchedEffect(translateError) {
         if (translateError != null) {

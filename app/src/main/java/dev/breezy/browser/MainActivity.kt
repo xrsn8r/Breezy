@@ -57,6 +57,9 @@ class MainActivity : ComponentActivity(), TabHost {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        dev.breezy.browser.data.CrashReport.note(
+            "activity onCreate #${System.identityHashCode(this).toString(16)} restored=${savedInstanceState != null} action=${intent?.action}",
+        )
 
         tabs = TabManager(this, this)
         // Once per process: after a crash, reopening from Recents restores state, so don't key
@@ -143,6 +146,7 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        dev.breezy.browser.data.CrashReport.note("activity onNewIntent action=${intent.action}")
         if (intent.getBooleanExtra(dev.breezy.browser.downloads.DownloadService.EXTRA_OPEN_DOWNLOADS, false)) tabs.showDownloads = true
         openFileFrom(intent)
         intentUrl(intent)?.let { tabs.newTab(it) }
@@ -172,7 +176,7 @@ class MainActivity : ComponentActivity(), TabHost {
 
     override fun onPause() {
         super.onPause()
-        dev.breezy.browser.data.CrashReport.note("activity onPause finishing=$isFinishing")
+        dev.breezy.browser.data.CrashReport.note("activity onPause #${System.identityHashCode(this).toString(16)} finishing=$isFinishing")
         if (keepPlaying || isInPictureInPictureMode) {
             // Keep the page "visible" to Chromium so video isn't suspended in the background.
             tabs.current?.webView?.keepVisible = true
@@ -200,8 +204,14 @@ class MainActivity : ComponentActivity(), TabHost {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        dev.breezy.browser.data.CrashReport.note("activity focus=$hasFocus")
+    }
+
     override fun onResume() {
         super.onResume()
+        dev.breezy.browser.data.CrashReport.note("activity onResume #${System.identityHashCode(this).toString(16)}")
         tabs.current?.webView?.keepVisible = false
         tabs.current?.onResume()
         dev.breezy.browser.downloads.FileOpener.resumePending(this)
@@ -210,7 +220,7 @@ class MainActivity : ComponentActivity(), TabHost {
     }
 
     override fun onDestroy() {
-        dev.breezy.browser.data.CrashReport.note("activity onDestroy finishing=$isFinishing")
+        dev.breezy.browser.data.CrashReport.note("activity onDestroy #${System.identityHashCode(this).toString(16)} finishing=$isFinishing")
         dev.breezy.browser.media.MediaPlaybackService.stop(this)
         if (isFinishing) {
             if (AppSettings.clearOnExit) {

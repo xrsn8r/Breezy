@@ -47,6 +47,29 @@ class ClickTest {
         assertEquals(1, bookmarks)
     }
 
+
+    /** A tap while the sheet is still sliding up (row already on screen) must not be lost. */
+    @Test fun menuRowClickDuringOpenAnimation() = tapAt(200L)
+
+    private fun tapAt(ms: Long) {
+        var settings = 0
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            BreezyTheme(dark = true) {
+                MenuSheet(
+                    tab = null, onNewTab = {}, onShare = {}, onSettings = { settings++ }, onBlockElement = {}, onUnlockScrolling = {},
+                    onDiagnostics = {}, onAddToHome = {}, onAddAsFilterList = {}, onFind = {}, onReader = {}, onTranslate = {},
+                    onTextSize = {}, onSpeed = {}, onNewPrivateTab = {}, onHistory = {}, onBookmarks = {}, onShields = {},
+                    onDownloads = {}, onDismiss = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(ms)
+        compose.onNodeWithText("Settings").performClick()
+        compose.mainClock.advanceTimeBy(300)
+        assertEquals(1, settings)
+    }
+
     @Test fun settingsGroupHeaderClicks() {
         compose.setContent { BreezyTheme(dark = true) { SettingsScreen(onDarkPagesChanged = {}, onDismiss = {}) } }
         compose.onNodeWithText("Appearance").performClick()

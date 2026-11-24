@@ -63,7 +63,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.input.pointer.pointerInput
@@ -103,9 +102,21 @@ fun MenuSheet(
     val itemModifier = Modifier.clip(RoundedCornerShape(16.dp))
     var pageOpen by rememberSaveable { mutableStateOf(true) }
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val sheetState = androidx.compose.material3.rememberBottomSheetState(
+        initialValue = androidx.compose.material3.SheetValue.Hidden,
+        enabledValues = setOf(
+            androidx.compose.material3.SheetValue.Hidden,
+            androidx.compose.material3.SheetValue.PartiallyExpanded,
+            androidx.compose.material3.SheetValue.Expanded,
+        ),
+    )
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        dev.breezy.browser.data.CrashReport.note("menu opened")
+        onDispose { dev.breezy.browser.data.CrashReport.note("menu closed") }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            Modifier.logTouches().fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.logTouches { "${sheetState.currentValue}->${sheetState.targetValue}" }.fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
             // --- Most-used actions --------------------------------------------------------------
@@ -275,12 +286,26 @@ private fun MenuRow(
 /** Diagnostics trail: which menu item was tapped (its label only). */
 private fun tapped(label: String) = dev.breezy.browser.data.CrashReport.note("menu tap: $label")
 
-/** Diagnostics trail: raw touches on the menu, to tell lost taps from cancelled ones. */
-private fun Modifier.logTouches(): Modifier = pointerInput(Unit) {
+/**
+ * Diagnostics trail: every touch on the menu, with what happened to it. Taps on rows were
+ * sometimes ignored; this records how many pointers Compose thought were down, whether the lift
+ * was consumed by something else or landed outside, and whether the sheet was still animating.
+ */
+private fun Modifier.logTouches(sheet: () -> String): Modifier = pointerInput(Unit) {
     awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-        val up = waitForUpOrCancellation(pass = androidx.compose.ui.input.pointer.PointerEventPass.Final)
-        dev.breezy.browser.data.CrashReport.note(if (up == null) "menu touch cancelled" else "menu touch")
+        val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+        val atDown = currentEvent.changes.count { it.pressed }
+        var outcome = "lost"
+        while (true) {
+            val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+            if (!ch.pressed) {
+                val others = ev.changes.count { it.id != down.id && it.pressed }
+                outcome = "up consumed=${ch.isConsumed} out=${ch.position.x < 0 || ch.position.y < 0 || ch.position.x > size.width || ch.position.y > size.height} othersDown=$others"
+                break
+            }
+        }
+        dev.breezy.browser.data.CrashReport.note("menu touch: pointersAtDown=$atDown $outcome sheet=${sheet()}")
     }
 }
 

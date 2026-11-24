@@ -2,6 +2,10 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.10.4
+- More detailed diagnostics for the unresponsive-menu issue: what happened to each touch, the
+  menu's animation state, and the app window's lifecycle and focus.
+
 ## 0.10.3
 - Diagnostics: menu taps and touches, and ad-block engine rebuilds, are recorded in
   Settings → Advanced → Share diagnostics, to track down a rare case where menu rows stopped

@@ -217,6 +217,7 @@ object Shield {
     private suspend fun rebuild(context: Context, refresh: Boolean): Boolean = withContext(Dispatchers.IO) {
         if (_state.value.updating) return@withContext false
         _state.value = _state.value.copy(updating = true, lastError = null)
+        dev.breezy.browser.data.CrashReport.note("shields: rebuilding engine (refresh=$refresh)")
         val failed = mutableListOf<String>()
         val result = runCatching {
             val wanted = allLists().filter { it.id in enabledIds() }
@@ -253,6 +254,7 @@ object Shield {
         val error = result.exceptionOrNull()?.message
             ?: failed.takeIf { it.isNotEmpty() }?.let { "Couldn't download: ${it.joinToString()}" }
         _state.value = _state.value.copy(updating = false, lastError = error)
+        dev.breezy.browser.data.CrashReport.note("shields: rebuild finished" + (error?.let { " ($it)" } ?: ""))
         publish()
         result.isSuccess
     }

@@ -63,6 +63,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -101,7 +105,7 @@ fun MenuSheet(
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.logTouches().fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
             // --- Most-used actions --------------------------------------------------------------
@@ -157,12 +161,12 @@ fun MenuSheet(
 
             ListItem(
                 leadingContent = { Icon(Icons.Rounded.Bookmarks, null) },
-                modifier = itemModifier.clickable(onClick = onBookmarks),
+                modifier = itemModifier.clickable { tapped("Bookmarks"); onBookmarks() },
             ) { Text("Bookmarks") }
             if (BrowserTab.multiProfileSupported) {
                 ListItem(
                     leadingContent = { Icon(Icons.Rounded.VisibilityOff, null) },
-                    modifier = itemModifier.clickable(onClick = onNewPrivateTab),
+                    modifier = itemModifier.clickable { tapped("New private tab"); onNewPrivateTab() },
                 ) { Text("New private tab") }
             }
 
@@ -201,7 +205,7 @@ fun MenuSheet(
             }
             ListItem(
                 leadingContent = { Icon(Icons.Rounded.Settings, null) },
-                modifier = itemModifier.clickable(onClick = onSettings),
+                modifier = itemModifier.clickable { tapped("Settings"); onSettings() },
             ) { Text("Settings") }
         }
     }
@@ -210,7 +214,7 @@ fun MenuSheet(
 @Composable
 private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
     Surface(
-        onClick = onClick,
+        onClick = { tapped(label); onClick() },
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -244,7 +248,7 @@ private fun MenuGroup(
                 leadingContent = { Icon(icon, null) },
                 trailingContent = { Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.rotate(rotation)) },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                modifier = Modifier.clickable { onToggle(!open) },
+                modifier = Modifier.clickable { tapped(title); onToggle(!open) },
             ) { Text(title, style = MaterialTheme.typography.titleMedium) }
             AnimatedVisibility(visible = open) {
                 Column(Modifier.padding(bottom = 8.dp)) { content() }
@@ -264,8 +268,20 @@ private fun MenuRow(
         supportingContent = subtitle?.let { { Text(it) } },
         leadingContent = { Icon(icon, null) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { tapped(title); onClick() },
     ) { Text(title) }
+}
+
+/** Diagnostics trail: which menu item was tapped (its label only). */
+private fun tapped(label: String) = dev.breezy.browser.data.CrashReport.note("menu tap: $label")
+
+/** Diagnostics trail: raw touches on the menu, to tell lost taps from cancelled ones. */
+private fun Modifier.logTouches(): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+        val up = waitForUpOrCancellation(pass = androidx.compose.ui.input.pointer.PointerEventPass.Final)
+        dev.breezy.browser.data.CrashReport.note(if (up == null) "menu touch cancelled" else "menu touch")
+    }
 }
 
 /** Plain-text list URLs (…/list.txt, raw?file=…txt) get "Add page as filter list". */

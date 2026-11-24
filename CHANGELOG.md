@@ -2,6 +2,12 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.10.3
+- Diagnostics: menu taps and touches, and ad-block engine rebuilds, are recorded in
+  Settings → Advanced → Share diagnostics, to track down a rare case where menu rows stopped
+  responding for a few minutes.
+- Tap tests for the menu and Settings run on every build.
+
 ## 0.10.2
 - **Updated Android components**: list rows, sliders, the tab switcher sheet and swipe-to-close
   now use the current Material 3 APIs (no more deprecated building blocks). Screens look the same.

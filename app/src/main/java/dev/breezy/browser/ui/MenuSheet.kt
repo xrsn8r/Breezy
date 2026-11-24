@@ -50,7 +50,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -102,25 +101,15 @@ fun MenuSheet(
     val itemModifier = Modifier.clip(RoundedCornerShape(16.dp))
     var pageOpen by rememberSaveable { mutableStateOf(true) }
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
-    // Straight to full height, and no sheet drag gestures. With dragging on, small finger movements
-    // while tapping were taken as drags of the sheet (it bounced between half and full height) and
-    // the drag swallowed the tap, so rows sometimes ignored taps. Close with a tap outside or Back.
-    val sheetState = androidx.compose.material3.rememberBottomSheetState(
-        initialValue = androidx.compose.material3.SheetValue.Hidden,
-        enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
-    )
+    // Its own bottom window with no drag gestures: earlier, small finger movements while tapping
+    // were taken as drags of the sheet and swallowed the tap. Close with a tap outside or Back.
     androidx.compose.runtime.DisposableEffect(Unit) {
         dev.breezy.browser.data.CrashReport.note("menu opened")
         onDispose { dev.breezy.browser.data.CrashReport.note("menu closed") }
     }
-    val frost = rememberFrost()
-    ModalBottomSheet(
-        onDismissRequest = onDismiss, sheetState = sheetState, sheetGesturesEnabled = false, dragHandle = null,
-        containerColor = frost.containerColor(), scrimColor = frost.scrimColor(),
-    ) {
-        FrostWindow(frost)
+    FrostedSheet(onDismissRequest = onDismiss) {
         Column(
-            Modifier.logTouches { "${sheetState.currentValue}->${sheetState.targetValue}" }.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.logTouches { "frosted" }.padding(top = 20.dp).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
             // --- Most-used actions --------------------------------------------------------------

@@ -26,7 +26,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,12 +51,8 @@ fun TabsSheet(
     onNewPrivateTab: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val frost = rememberFrost()
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = frost.containerColor(), scrimColor = frost.scrimColor(), sheetState = androidx.compose.material3.rememberBottomSheetState(
-        initialValue = androidx.compose.material3.SheetValue.Hidden,
-        enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
-    )) {
-        FrostWindow(frost)
+    FrostedSheet(onDismissRequest = onDismiss) {
+        Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${tabs.size} tabs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             if (BrowserTab.multiProfileSupported) {

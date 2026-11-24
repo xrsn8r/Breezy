@@ -2,6 +2,12 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.11.0 (test build)
+- **Frosted menu and tab switcher**: the area behind them is frosted like the toolbar while the
+  page above stays sharp (Android 12+). Done by the system, so it can't cause blank pages.
+  Settings → Appearance → Frosted surfaces turns it off; battery saver turns it off by itself.
+- The tab switcher closes with a tap outside or Back (swiping a tab card still closes that tab).
+
 ## 0.10.6
 - **Update checks no longer hit GitHub's rate limit.** Breezy finds the newest release through
   GitHub's normal release page instead of its API (which allows only 60 checks an hour), and

@@ -139,6 +139,7 @@ fun MovableBrowserBar(
         // Otherwise copying could grab the link of a tab that was switched away from or closed.
         val currentTab by rememberUpdatedState(tab)
         val currentOnCopyLink by rememberUpdatedState(onCopyLink)
+        val currentOnTabs by rememberUpdatedState(onTabs)
         var rowBounds by remember { mutableStateOf(Rect.Zero) }
         var pillBounds by remember { mutableStateOf(Rect.Zero) }
 
@@ -150,22 +151,43 @@ fun MovableBrowserBar(
                 .graphicsLayer { scaleX = lift; scaleY = lift }
                 .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                 .pointerInput(travel) {
-                    // Hold anywhere and drag: move the toolbar. Hold the address without moving:
-                    // copy the link. Taps fall through to the buttons as usual.
+                    // Swipe up: open the tab switcher. Hold anywhere and drag: move the toolbar.
+                    // Hold the address without moving: copy the link. Taps reach the buttons.
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        // Non-null if the finger lifts or moves before the long-press timeout.
-                        val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                            var done = false
-                            while (!done) {
+                        // Before the long-press timeout: "moved" if the finger travelled, "lifted" if
+                        // it let go (a tap), null if it's still down (a long press).
+                        val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                            while (true) {
                                 val ev = awaitPointerEvent(PointerEventPass.Initial)
-                                val ch = ev.changes.firstOrNull { it.id == down.id }
-                                done = ch == null || !ch.pressed ||
-                                    (ch.position - down.position).getDistance() > viewConfiguration.touchSlop
+                                val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull "lifted"
+                                if (!ch.pressed) return@withTimeoutOrNull "lifted"
+                                if ((ch.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                    return@withTimeoutOrNull "moved"
+                                }
                             }
-                            true
+                            @Suppress("UNREACHABLE_CODE") "lifted"
                         }
-                        if (released != null) return@awaitEachGesture // tap or swipe: not ours
+                        if (early == "lifted") return@awaitEachGesture // a tap: the button handles it
+                        if (early == "moved") {
+                            // A quick, mostly vertical upward swipe opens the tabs.
+                            val threshold = 40.dp.toPx()
+                            var opened = false
+                            while (true) {
+                                val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                val d = ch.position - down.position
+                                val upward = d.y < 0 && kotlin.math.abs(d.y) > kotlin.math.abs(d.x) * 1.5f
+                                if (upward) ev.changes.forEach { it.consume() } // no click on the button below
+                                if (!opened && upward && -d.y > threshold) {
+                                    opened = true
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    currentOnTabs()
+                                }
+                                if (!ch.pressed) break
+                            }
+                            return@awaitEachGesture
+                        }
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         val downInRoot = rowBounds.topLeft + down.position
                         val onAddressPill = pillBounds.contains(downInRoot)

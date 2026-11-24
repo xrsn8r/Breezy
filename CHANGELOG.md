@@ -2,6 +2,10 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.9.4
+- **Swipe up on the toolbar** to open the tab switcher. (Long-press and drag still moves the
+  toolbar.)
+
 ## 0.9.3
 - **Smarter language detection**: Breezy reads the page's text to decide its language (on your
   device, nothing is sent), instead of trusting what the site declares. Pages like French

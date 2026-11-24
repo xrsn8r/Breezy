@@ -171,6 +171,21 @@ class BrowserTab(
         }
     }
 
+    /** If this site's saved icon is small, look for the page's own high-resolution icons. */
+    private fun findBetterIcon() {
+        val page = url
+        if (isPrivate || !page.startsWith("http") || !dev.breezy.browser.data.Favicons.wantsBetter(page)) return
+        webView.evaluateJavascript(ICON_LINKS_JS) { raw ->
+            val o = runCatching { org.json.JSONObject(org.json.JSONTokener(raw).nextValue() as String) }.getOrNull()
+            val arr = o?.optJSONArray("icons")
+            val candidates = arr?.let { a ->
+                List(a.length()) { a.optJSONArray(it) }.mapNotNull { e -> e?.let { it.optString(0) to it.optInt(1) } }
+            }.orEmpty()
+            val manifest = o?.optString("manifest")?.takeIf { it.startsWith("http") }
+            appScope.launch { dev.breezy.browser.data.Favicons.upgrade(page, candidates, manifest) }
+        }
+    }
+
     /** Media found on the current page, newest last. Reset on each top-level navigation. */
     val detectedMedia = androidx.compose.runtime.mutableStateListOf<DetectedMedia>()
 
@@ -265,8 +280,12 @@ class BrowserTab(
 
         if (AppSettings.identifyAsChrome) presentAsChrome(settings)
         addJavascriptInterface(CosmeticBridge(), "BreezyShield")
-        addJavascriptInterface(PickerBridge(), "BreezyPicker")
         addJavascriptInterface(PageBridge(), "BreezyPage")
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.addWebMessageListener(this, "BreezyHost", setOf("*")) { _, message, sourceOrigin, isMainFrame, reply ->
+                onHostMessage(message.data, sourceOrigin, isMainFrame, reply)
+            }
+        }
         installCosmeticScript(this)
 
         webViewClient = Client()
@@ -278,11 +297,13 @@ class BrowserTab(
 
     init {
         mobileUserAgent = webView.settings.userAgentString
+        preparePrivacy(null) // a default until the first navigation picks the site's own
     }
 
     fun load(input: String) {
         val target = rewriteNavigation(input) ?: input
         runCatching { prepareScriptlets(target.toUri()) }
+        runCatching { preparePrivacy(target.toUri()) }
         applySiteSettings(runCatching { target.toUri().host }.getOrNull())
         httpsFailure = null
         // Global Privacy Control as a header too, on navigations Breezy starts (WebView can't add
@@ -402,6 +423,11 @@ class BrowserTab(
     }
 
     /** Receives media events and config requests from assets/breezy/page.js. */
+    /**
+     * Read-only values the document-start scripts need synchronously. Every frame can call a
+     * JavascriptInterface (and can't be told apart), so nothing here takes an action or returns a
+     * secret; actions go through [onHostMessage], which knows who is asking.
+     */
     private inner class PageBridge {
         @JavascriptInterface
         fun config(): String = org.json.JSONObject()
@@ -410,100 +436,124 @@ class BrowserTab(
             .put("rate", playbackRate.toDouble())
             .toString()
 
-        /** Privacy signals and the farbling seed for a frame on [host] (null seed = no farbling). */
-        @JavascriptInterface
-        fun privacyConfig(host: String): String {
-            val o = org.json.JSONObject()
-                .put("gpc", AppSettings.globalPrivacyControl)
-                .put("dnt", AppSettings.doNotTrack)
-            // Shields down for the page also turns farbling off (it can break a site's canvas use).
-            if (AppSettings.farbling && Shield.activeFor(pageHost) && host.isNotEmpty()) {
-                val site = runCatching { NativeShield.registrableDomain(host) }.getOrNull() ?: host
-                val digest = java.security.MessageDigest.getInstance("SHA-256").run { update(farbleKey); digest(site.toByteArray()) }
-                o.put("seed", digest.take(4).joinToString("") { "%02x".format(it) })
-            }
-            return o.toString()
-        }
-
-        @JavascriptInterface
-        fun sponsorSkipped(category: String, seconds: Int) {
-            dev.breezy.browser.data.CrashReport.note("sponsorblock skipped $category (${seconds}s)")
-        }
-
         @JavascriptInterface
         fun sponsorEnabled(): Boolean = AppSettings.sponsorBlock && AppSettings.sponsorCategories.isNotEmpty()
+    }
 
-        @JavascriptInterface
-        fun sponsorSegments(videoId: String) {
-            if (!Regex("[\\w-]{11}").matches(videoId)) return
-            appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val result = runCatching { dev.breezy.browser.data.SponsorBlock.segments(videoId) }
-                val json = result.getOrElse {
-                    dev.breezy.browser.data.CrashReport.note("sponsorblock lookup failed: ${it.javaClass.simpleName}: ${it.message}")
-                    return@launch
-                }
-                dev.breezy.browser.data.CrashReport.note("sponsorblock: ${org.json.JSONArray(json).length()} segments")
-                main.post {
-                    webView.evaluateJavascript("window.__breezySB&&__breezySB.segments('$videoId',$json)", null)
+    // --- Host message channel ----------------------------------------------------------------------
+
+    /** scheme://host[:port] of the page in this tab, to compare with a message's real origin. */
+    private fun pageOrigin(): String? = runCatching {
+        val u = pageUrl.toUri()
+        val scheme = u.scheme ?: return null
+        val h = u.host ?: return null
+        "$scheme://$h" + if (u.port != -1) ":${u.port}" else ""
+    }.getOrNull()
+
+    /**
+     * Messages from Breezy's page scripts (`BreezyHost.postMessage(json)`). WebView reports the
+     * sender's true origin and whether it's the top frame, so ads and other sites' embeds can't
+     * trigger anything: every action requires the main frame of the page you're on (SponsorBlock:
+     * the main frame of YouTube).
+     */
+    private fun onHostMessage(message: String?, sourceOrigin: android.net.Uri, isMainFrame: Boolean, reply: androidx.webkit.JavaScriptReplyProxy) {
+        val o = runCatching { org.json.JSONObject(message ?: return) }.getOrNull() ?: return
+        val origin = sourceOrigin.toString().trimEnd('/')
+        val fromPage = isMainFrame && origin == pageOrigin()
+        when (o.optString("t")) {
+            "media" -> if (fromPage) onMediaSources(o.optJSONArray("sources") ?: return)
+            "mediaState" -> if (fromPage) onMediaState(
+                o.optBoolean("playing"), o.optString("title"), o.optBoolean("video"), o.optDouble("aspect", 16.0 / 9),
+            )
+            "blob" -> if (isMainFrame) onBlobChunk(o.optString("id"), o.optString("data"), o.optBoolean("last"))
+            "pick" -> if (fromPage) onPickerSelect(o)
+            "scriptlets" -> if (fromPage) injectPageScriptlets()
+            "sb" -> if (isMainFrame && origin in YOUTUBE_ORIGINS) onSponsorRequest(o.optString("id"), reply)
+            "sbSkipped" -> if (isMainFrame && origin in YOUTUBE_ORIGINS) dev.breezy.browser.data.CrashReport.note(
+                "sponsorblock skipped ${o.optString("category").take(20)} (${o.optInt("seconds")}s)",
+            )
+            // Only while the user has asked for a translation of this page.
+            "tr" -> if (fromPage && translatedFrom != null) onTranslateRequest(o.optInt("id"), o.optJSONArray("texts") ?: return, reply)
+        }
+    }
+
+    private fun onMediaSources(arr: org.json.JSONArray) {
+        for (i in 0 until minOf(arr.length(), 50)) {
+            val o = arr.optJSONObject(i) ?: continue
+            val src = o.optString("src")
+            val tag = o.optString("tag")
+            when {
+                src == "stream" -> streamOnlyMedia = true
+                src.startsWith("http") -> {
+                    val kind = mediaKind(src, null) ?: if (tag == "audio") DetectedMedia.Kind.Audio else DetectedMedia.Kind.Video
+                    addMedia(DetectedMedia(src, kind, title, pageUrl))
                 }
             }
         }
+    }
 
-        @JavascriptInterface
-        fun translateBatch(id: Int, json: String) {
-            val texts = runCatching { org.json.JSONArray(json) }.getOrNull()?.let { a -> List(a.length()) { a.getString(it) } } ?: return
-            val target = dev.breezy.browser.data.Translator.target(AppSettings.translateTo)
-            appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val result = runCatching { dev.breezy.browser.data.Translator.translate(texts, target) }
-                main.post {
-                    result.onSuccess { r ->
-                        r.sourceLang?.let { if (translatedFrom == null || translatedFrom == "…") translatedFrom = it }
-                        val arr = org.json.JSONArray(r.texts).toString()
-                        webView.evaluateJavascript("window.__breezyTranslate&&__breezyTranslate.apply($id,$arr)", null)
-                    }.onFailure { translateError = it.message ?: "network error" }
-                }
+    private fun onMediaState(playing: Boolean, title: String, video: Boolean, aspect: Double) {
+        media = MediaState(
+            playing = playing, title = title.take(200).ifBlank { this@BrowserTab.title }, hasMedia = true,
+            video = video, aspect = aspect.toFloat().takeIf { it.isFinite() && it > 0f } ?: (16f / 9f),
+        )
+        host.onMediaStateChanged(this@BrowserTab)
+    }
+
+    private fun onPickerSelect(o: org.json.JSONObject) {
+        val current = picker ?: return // ignore unless the user is picking
+        picker = current.copy(
+            selector = o.optString("selector"),
+            count = o.optInt("count"),
+            label = o.optString("label"),
+            canParent = o.optBoolean("canParent"),
+            canChild = o.optBoolean("canChild"),
+        )
+    }
+
+    private fun injectPageScriptlets() {
+        if (!Shield.activeFor(pageHost)) return
+        val script = NativeShield.scriptlets(pageUrl)
+        if (script.isNotEmpty()) webView.evaluateJavascript(script, null)
+    }
+
+    private fun onSponsorRequest(videoId: String, reply: androidx.webkit.JavaScriptReplyProxy) {
+        if (!Regex("[\\w-]{11}").matches(videoId) || !AppSettings.sponsorBlock) return
+        appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val json = runCatching { dev.breezy.browser.data.SponsorBlock.segments(videoId) }.getOrElse {
+                dev.breezy.browser.data.CrashReport.note("sponsorblock lookup failed: ${it.javaClass.simpleName}: ${it.message}")
+                return@launch
             }
+            dev.breezy.browser.data.CrashReport.note("sponsorblock: ${org.json.JSONArray(json).length()} segments")
+            val msg = org.json.JSONObject().put("t", "sb").put("id", videoId).put("segments", org.json.JSONArray(json)).toString()
+            main.post { runCatching { reply.postMessage(msg) } }
         }
+    }
 
-        /** `[{"src": "...", "tag": "video"|"audio"}, ...]` from page.js; "stream" = MediaSource only. */
-        @JavascriptInterface
-        fun mediaSources(json: String) {
-            val arr = runCatching { org.json.JSONArray(json) }.getOrNull() ?: return
+    private fun onTranslateRequest(id: Int, arr: org.json.JSONArray, reply: androidx.webkit.JavaScriptReplyProxy) {
+        val texts = List(minOf(arr.length(), 100)) { arr.optString(it).take(5000) }
+        val target = dev.breezy.browser.data.Translator.target(AppSettings.translateTo)
+        appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val result = runCatching { dev.breezy.browser.data.Translator.translate(texts, target) }
             main.post {
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    val src = o.optString("src")
-                    val tag = o.optString("tag")
-                    when {
-                        src == "stream" -> streamOnlyMedia = true
-                        src.startsWith("http") -> {
-                            val kind = mediaKind(src, null) ?: if (tag == "audio") DetectedMedia.Kind.Audio else DetectedMedia.Kind.Video
-                            addMedia(DetectedMedia(src, kind, title, pageUrl))
-                        }
-                    }
-                }
-            }
-        }
-
-        @JavascriptInterface
-        fun blobChunk(id: String, base64: String, last: Boolean) = onBlobChunk(id, base64, last)
-
-        @JavascriptInterface
-        fun mediaState(playing: Boolean, title: String, video: Boolean, aspect: Double) {
-            main.post {
-                media = MediaState(
-                    playing = playing, title = title.ifBlank { this@BrowserTab.title }, hasMedia = true,
-                    video = video, aspect = aspect.toFloat().takeIf { it.isFinite() && it > 0f } ?: (16f / 9f),
-                )
-                host.onMediaStateChanged(this@BrowserTab)
+                result.onSuccess { r ->
+                    r.sourceLang?.let { if (translatedFrom == null || translatedFrom == "…") translatedFrom = it }
+                    val msg = org.json.JSONObject().put("t", "tr").put("id", id).put("texts", org.json.JSONArray(r.texts)).toString()
+                    runCatching { reply.postMessage(msg) }
+                }.onFailure { translateError = it.message ?: "network error" }
             }
         }
     }
 
     fun reload() = webView.reload()
     fun stop() = webView.stopLoading()
-    fun goBack() = webView.goBack()
-    fun goForward() = webView.goForward()
+    fun goBack() { historyTarget(-1)?.let(::preparePrivacy); webView.goBack() }
+    fun goForward() { historyTarget(1)?.let(::preparePrivacy); webView.goForward() }
+
+    private fun historyTarget(step: Int): android.net.Uri? = runCatching {
+        val list = webView.copyBackForwardList()
+        list.getItemAtIndex(list.currentIndex + step)?.url?.toUri()
+    }.getOrNull()
 
     fun toggleDesktopMode() {
         desktopMode = !desktopMode
@@ -540,7 +590,9 @@ class BrowserTab(
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.stopLoading()
         webView.removeJavascriptInterface("BreezyShield")
-        webView.removeJavascriptInterface("BreezyPicker")
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            runCatching { WebViewCompat.removeWebMessageListener(webView, "BreezyHost") }
+        }
         webView.removeJavascriptInterface("BreezyPage")
         scriptlets.values.forEach { it?.remove() }
         scriptlets.clear()
@@ -641,16 +693,6 @@ class BrowserTab(
             return NativeShield.hiddenSelectors(classes, ids, exceptions)
         }
 
-        @JavascriptInterface
-        fun injectScriptlets(frameUrl: String) {
-            if (!Shield.activeFor(pageHost)) return
-            // Only for the top page's own site: evaluateJavascript targets the main frame, so a
-            // third-party iframe must not be able to trigger injection there.
-            val requested = runCatching { frameUrl.toUri().host }.getOrNull()
-            if (requested == null || requested != pageHost) return
-            val script = NativeShield.scriptlets(frameUrl)
-            if (script.isNotEmpty()) main.post { webView.evaluateJavascript(script, null) }
-        }
     }
 
     private val appScope get() = (appContext as dev.breezy.browser.BreezyApp).scope
@@ -687,6 +729,7 @@ class BrowserTab(
                     }
                     // Register this site's scriptlets before its document is created (also on redirects).
                     prepareScriptlets(request.url)
+                    preparePrivacy(request.url)
                     applySiteSettings(request.url.host)
                 }
                 return false
@@ -738,6 +781,7 @@ class BrowserTab(
             progress = 1f
             updateNav()
             checkTranslateOffer()
+            findBetterIcon()
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
@@ -923,8 +967,8 @@ class BrowserTab(
         val js = """(async function(){try{var b=await (await fetch(${org.json.JSONObject.quote(url)})).blob();
             var CH=393216;for(var o=0;o<b.size;o+=CH){var buf=new Uint8Array(await b.slice(o,o+CH).arrayBuffer());
             var s='';for(var i=0;i<buf.length;i+=8192){s+=String.fromCharCode.apply(null,buf.subarray(i,i+8192));}
-            BreezyPage.blobChunk('$id',btoa(s),false);}BreezyPage.blobChunk('$id','',true);}
-            catch(e){BreezyPage.blobChunk('$id','',true);}})()"""
+            send(btoa(s),false);}send('',true);}catch(e){send('',true);}
+            function send(d,l){BreezyHost.postMessage(JSON.stringify({t:'blob',id:'$id',data:d,last:l}));}})()"""
         pendingBlobNames[id] = name to mime
         webView.evaluateJavascript(js, null)
     }
@@ -1084,23 +1128,6 @@ class BrowserTab(
     }
 
     /** Receives selections from assets/breezy/picker.js (binder thread). */
-    private inner class PickerBridge {
-        @JavascriptInterface
-        fun onSelect(json: String) {
-            val o = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return
-            main.post {
-                val current = picker ?: return@post // ignore calls when not picking
-                picker = current.copy(
-                    selector = o.optString("selector"),
-                    count = o.optInt("count"),
-                    label = o.optString("label"),
-                    canParent = o.optBoolean("canParent"),
-                    canChild = o.optBoolean("canChild"),
-                )
-            }
-        }
-    }
-
     // --- Scriptlets ---------------------------------------------------------------------------------
 
     /**
@@ -1111,6 +1138,38 @@ class BrowserTab(
     private val scriptlets = HashMap<String, ScriptHandler?>()
     private val scriptletOrigins = HashSet<String>()
     private var scriptletGeneration = -1
+
+    // --- Privacy script (GPC/DNT + farbling), per site ---------------------------------------------
+
+    private var privacyScript: ScriptHandler? = null
+    private var privacyKey: String? = null
+
+    /**
+     * Register privacy.js with this site's settings baked in, just before navigating to [uri].
+     * The farbling seed is SHA-256(session key + the site's eTLD+1); it's embedded in the script
+     * text rather than fetched, so the page can never learn it. Runs in every frame of the page.
+     * Navigations that skip this (rare) keep the previous registration, which still farbles.
+     */
+    private fun preparePrivacy(uri: android.net.Uri?) {
+        if (!documentStartScriptSupported) return
+        val host = uri?.host?.takeIf { uri.scheme == "https" || uri.scheme == "http" }
+        val site = host?.let { runCatching { NativeShield.registrableDomain(it) }.getOrNull() ?: it } ?: ""
+        val farble = AppSettings.farbling && (host == null || Shield.activeFor(host))
+        val key = "$site|$farble|${AppSettings.globalPrivacyControl}|${AppSettings.doNotTrack}"
+        if (key == privacyKey && privacyScript != null) return
+        val cfg = org.json.JSONObject()
+            .put("gpc", AppSettings.globalPrivacyControl)
+            .put("dnt", AppSettings.doNotTrack)
+        if (farble) {
+            val digest = java.security.MessageDigest.getInstance("SHA-256").run { update(farbleKey); digest(site.toByteArray()) }
+            cfg.put("seed", digest.take(4).joinToString("") { "%02x".format(it) })
+        }
+        val code = asset(webView.context, PRIVACY).replace("__BREEZY_PRIVACY_CONFIG__", cfg.toString())
+        val added = runCatching { WebViewCompat.addDocumentStartJavaScript(webView, code, setOf("*")) }.getOrNull() ?: return
+        privacyScript?.remove()
+        privacyScript = added
+        privacyKey = key
+    }
 
     private fun prepareScriptlets(uri: android.net.Uri) {
         if (!documentStartScriptSupported) return
@@ -1150,6 +1209,12 @@ class BrowserTab(
         val multiProfileSupported: Boolean by lazy { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }
         private const val COSMETIC = "adblock/cosmetic.js"
         private const val PRIVACY = "breezy/privacy.js"
+        /** The page's declared icons as `[[absoluteUrl, size], ...]` (apple-touch icons count as 180). */
+        private const val ICON_LINKS_JS = """JSON.stringify({icons:Array.prototype.slice.call(document.querySelectorAll(
+  'link[rel~="icon"],link[rel~="apple-touch-icon"],link[rel="apple-touch-icon-precomposed"]')).map(function(l){
+  var m=(l.getAttribute('sizes')||'').match(/(\d+)x\d+/);var touch=/apple-touch/.test(l.rel);
+  return [l.href, m?parseInt(m[1],10):(touch?180:0)];}).filter(function(x){return x[0];}),
+  manifest:(document.querySelector('link[rel="manifest"]')||{}).href||''})"""
         /** ~2000 chars of the page's main text plus its declared language, as a JSON string. */
         private const val TEXT_SAMPLE_JS = """(function(){
   var root=document.querySelector('article,main,[role=main]')||document.body;if(!root)return JSON.stringify({});
@@ -1212,8 +1277,6 @@ class BrowserTab(
 
         private fun installCosmeticScript(webView: WebView) {
             if (documentStartScriptSupported) {
-                // Privacy signals and farbling first, before any page script can read the APIs.
-                WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, PRIVACY), setOf("*"))
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, SPONSORBLOCK), YOUTUBE_ORIGINS)
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, SCROLL_REPAIR), setOf("*"))
                 WebViewCompat.addDocumentStartJavaScript(webView, asset(webView.context, PAGE), setOf("*"))

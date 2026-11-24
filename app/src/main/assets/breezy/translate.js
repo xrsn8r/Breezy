@@ -1,12 +1,17 @@
 // In-place page translation (top frame). Evaluated on demand when the user taps Translate.
-// Text nodes are sent to Breezy in batches (BreezyPage.translateBatch); Breezy translates them
-// natively and calls window.__breezyTranslate.apply(batchId, [...]). New content (infinite
+// Text nodes are sent to Breezy in batches over BreezyHost ({t:'tr', id, texts}); Breezy
+// translates them natively and replies on the same channel with the results. New content (infinite
 // scroll, SPA navigation) is translated as it appears. restore() puts the original text back.
 (function () {
   'use strict';
   if (window.__breezyTranslate) { window.__breezyTranslate.start(); return; }
-  var bridge = window.BreezyPage;
-  if (!bridge || !bridge.translateBatch) return;
+  var channel = window.BreezyHost;
+  if (!channel) return;
+  function request(id, texts) { try { channel.postMessage(JSON.stringify({ t: 'tr', id: id, texts: texts })); } catch (e) {} }
+  channel.addEventListener('message', function (e) {
+    var m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (m && m.t === 'tr' && window.__breezyTranslate) window.__breezyTranslate.apply(m.id, m.texts);
+  });
 
   var SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, CODE: 1, PRE: 1, TEXTAREA: 1, INPUT: 1, SELECT: 1, OPTION: 1, SVG: 1, MATH: 1, KBD: 1, SAMP: 1, VAR: 1 };
   var originals = new Map(); // text node -> original text
@@ -50,7 +55,7 @@
       if (!nodes.length) return;
       var id = nextId++;
       pending[id] = nodes;
-      try { bridge.translateBatch(id, JSON.stringify(texts)); } catch (e) {}
+      request(id, texts);
       nodes = []; texts = []; chars = 0;
     }
     queued.forEach(function (n) {
@@ -104,7 +109,7 @@
       if (document.title) {
         var id = nextId++;
         pending[id] = 'title';
-        try { bridge.translateBatch(id, JSON.stringify([document.title])); } catch (e) {}
+        request(id, [document.title]);
       }
       collect(document.body);
       observe();

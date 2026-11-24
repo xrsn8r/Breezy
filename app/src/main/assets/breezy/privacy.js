@@ -2,19 +2,17 @@
 //
 // - Global Privacy Control (navigator.globalPrivacyControl) and, optionally, Do Not Track.
 // - Farbling (as in Brave): the APIs most used for fingerprinting return values with tiny,
-//   deterministic noise. The noise is keyed per site (eTLD+1) and per app session, so a site sees
-//   a stable fingerprint during a session but can't link it to other sites or later sessions.
-//   Canvas and audio output change by a few least-significant bits: invisible and inaudible.
-(function () {
+//   deterministic noise. The noise is keyed per site (the top page's eTLD+1, so embedded trackers
+//   get it too) and per app session: stable during a session, unlinkable across sites/sessions.
+//
+// Breezy fills in the config argument at the bottom ({gpc, dnt, seed}) when it registers this script for
+// the site being opened. The seed is never exposed to the page: if a site could read it, it could
+// undo the noise. Canvas and audio output change by a few least-significant bits: invisible and
+// inaudible.
+(function (cfg) {
   'use strict';
-  if (window.__breezyPrivacy) return;
+  if (window.__breezyPrivacy || !cfg) return;
   try { Object.defineProperty(window, '__breezyPrivacy', { value: true }); } catch (e) { return; }
-  var bridge = window.BreezyPage;
-  if (!bridge || !bridge.privacyConfig) return;
-  var host = location.hostname;
-  if (!host) { try { host = parent.location.hostname; } catch (e) {} } // about:blank / srcdoc frames
-  var cfg;
-  try { cfg = JSON.parse(bridge.privacyConfig(host || '')); } catch (e) { return; }
 
   function getter(proto, name, value) {
     try {
@@ -156,4 +154,4 @@
     var cores = navigator.hardwareConcurrency;
     if (cores > 2) getter(Navigator.prototype, 'hardwareConcurrency', 2 + (hash(3) % (cores - 1)));
   } catch (e) {}
-})();
+})(__BREEZY_PRIVACY_CONFIG__);

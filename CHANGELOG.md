@@ -2,6 +2,18 @@
 
 Each release's notes on GitHub (and in Breezy's update prompt) come from its section here.
 
+## 0.10.0
+- **Security**: Breezy's page scripts now talk to the app over a channel that knows who's asking.
+  Ads and other sites' embedded frames can no longer add fake downloads, change the media
+  notification, start translations or run Breezy's site fixes; only the page you're on can.
+- **Fingerprinting protection can't be undone**: the per-site noise seed used to be readable by
+  the page, which would let a site reverse the noise. It's now built into the protection script
+  itself and is never exposed. Seeds are per top-level site (as in Brave), so embedded trackers
+  get the same noise as the page.
+- **Home shortcut icons**: every icon sits in the same small circle, and Breezy fetches sharp
+  versions from the site's own icon list and web app manifest when the saved one is blurry
+  (YouTube's is now crisp).
+
 ## 0.9.5
 - **Site icons on home shortcuts**: shortcuts show just the site's own colour icon, like the tab
   switcher, instead of a letter in a shape. Shortcuts without an icon use a plain circle. Icons are saved as you browse (never from private tabs); a

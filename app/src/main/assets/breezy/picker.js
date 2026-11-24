@@ -1,10 +1,10 @@
 // Breezy element picker. Injected into the top frame on demand. Swipe to scroll, tap to select.
-// Reports the current selection to native via BreezyPicker.onSelect(json):
+// Reports the current selection to native via BreezyHost.postMessage({t:'pick', ...}):
 //   { selector, count, label, canChild, canParent }
 (function () {
   'use strict';
   if (window.__breezyPicker) { window.__breezyPicker.stop(); }
-  var native = window.BreezyPicker;
+  var native = window.BreezyHost;
   var Z = 2147483647;
 
   // --- Overlay: captures touches so the page doesn't react while picking -------------------------
@@ -121,7 +121,8 @@
     draw();
     applyPreview();
     if (!native) return;
-    native.onSelect(JSON.stringify({
+    native.postMessage(JSON.stringify({
+      t: 'pick',
       selector: selector,
       count: count(selector),
       label: target ? label(target) : '',

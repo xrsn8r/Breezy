@@ -200,11 +200,9 @@ private fun ShortcutTile(
             .padding(vertical = 6.dp),
     ) {
         val bitmap = icon
-        // With a site icon: just the icon, no tile behind it. Otherwise a plain circle with a letter.
+        // Every tile is the same circle: the site's icon centred in it, or a letter if there's none.
         Box(
-            Modifier.size(56.dp).then(
-                if (bitmap != null) Modifier else Modifier.clip(shape.toShape()).background(bg),
-            ),
+            Modifier.size(56.dp).clip(shape.toShape()).background(if (bitmap != null) colors.surfaceContainerHigh else bg),
             contentAlignment = Alignment.Center,
         ) {
             if (bitmap != null) {
@@ -212,7 +210,7 @@ private fun ShortcutTile(
                     bitmap.asImageBitmap(),
                     contentDescription = null,
                     filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-                    modifier = Modifier.size(48.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
+                    modifier = Modifier.size(32.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
                 )
             } else if (letter == null) Icon(Icons.Rounded.Add, contentDescription = null, tint = fg)
             else Text(letter, color = fg, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

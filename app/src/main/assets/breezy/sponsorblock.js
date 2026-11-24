@@ -5,7 +5,9 @@
   'use strict';
   if (window.top !== window || window.__breezySB) return;
   var bridge = window.BreezyPage;
-  if (!bridge || !bridge.sponsorEnabled || !bridge.sponsorEnabled()) return;
+  var channel = window.BreezyHost;
+  if (!bridge || !channel || !bridge.sponsorEnabled || !bridge.sponsorEnabled()) return;
+  function send(msg) { try { channel.postMessage(JSON.stringify(msg)); } catch (e) {} }
 
   var LABELS = {
     sponsor: 'sponsor', selfpromo: 'self-promotion', interaction: 'reminder to subscribe',
@@ -26,12 +28,15 @@
     var id = videoId();
     if (id === current) return;
     current = id; segments = []; skipped = {};
-    if (id && /^[\w-]{11}$/.test(id)) { try { bridge.sponsorSegments(id); } catch (e) {} }
+    if (id && /^[\w-]{11}$/.test(id)) send({ t: 'sb', id: id });
   }
 
-  window.__breezySB = {
-    segments: function (id, list) { if (id === current) { segments = list || []; skipped = {}; } },
-  };
+  window.__breezySB = true;
+  // Segments arrive as a reply on the same channel.
+  channel.addEventListener('message', function (e) {
+    var m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (m && m.t === 'sb' && m.id === current) { segments = m.segments || []; skipped = {}; }
+  });
 
   // --- Toast with Undo ---------------------------------------------------------------------------
   var toast = null, toastTimer = 0;
@@ -85,7 +90,7 @@
       skipped[s.uuid] = true;
       var from = t;
       v.currentTime = s.end;
-      try { bridge.sponsorSkipped && bridge.sponsorSkipped(s.category, Math.round(s.end - from)); } catch (e) {}
+      send({ t: 'sbSkipped', category: s.category, seconds: Math.round(s.end - from) });
       showToast('Skipped ' + (LABELS[s.category] || 'segment'), function () { v.currentTime = Math.max(0, from - 0.1); });
     }
   }

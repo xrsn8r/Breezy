@@ -7,6 +7,9 @@
   if (window.top !== window || window.__breezyMedia) return;
   var bridge = window.BreezyPage;
   if (!bridge) return;
+  // Actions go through BreezyHost (Breezy checks the sender is this page's top frame).
+  var hostChannel = window.BreezyHost;
+  function send(msg) { try { hostChannel.postMessage(JSON.stringify(msg)); } catch (e) {} }
   var cfg = {};
   try { cfg = JSON.parse(bridge.config()); } catch (e) {}
   var rate = cfg.rate || 1;
@@ -39,7 +42,7 @@
         out.push({ src: key, tag: m.tagName.toLowerCase() });
       });
     });
-    if (out.length) { try { bridge.mediaSources(JSON.stringify(out)); } catch (e) {} }
+    if (out.length) send({ t: 'media', sources: out });
   }
 
   var last = '', timer = 0;
@@ -53,7 +56,7 @@
       var key = (!!el) + ':' + isVideo + ':' + aspect.toFixed(2);
       if (key === last) return;
       last = key;
-      try { bridge.mediaState(!!el, document.title || '', isVideo, aspect); } catch (e) {}
+      send({ t: 'mediaState', playing: !!el, title: document.title || '', video: isVideo, aspect: aspect });
     }, 150);
   }
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata', 'resize'].forEach(function (type) {

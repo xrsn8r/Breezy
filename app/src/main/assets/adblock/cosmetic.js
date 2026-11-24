@@ -20,7 +20,8 @@
       (0, eval)(res.injected_script);
     } catch (e) {
       // CSP forbids eval: ask native to inject via evaluateJavascript (not subject to CSP).
-      try { api.injectScriptlets(location.href); } catch (_) {}
+      // Breezy only honours this from the top frame of the page itself (checked natively).
+      try { window.BreezyHost.postMessage(JSON.stringify({ t: 'scriptlets' })); } catch (_) {}
     }
   }
 
